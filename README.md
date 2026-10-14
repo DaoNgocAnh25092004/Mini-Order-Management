@@ -5,9 +5,9 @@
 <h1 align="center">Mini Order Management</h1>
 
 <p align="center">
-  A NestJS REST API backed by PostgreSQL and TypeORM. The current implementation
-  focuses on product listing, database migrations, seed data, and an application
-  health endpoint. Order processing and workers are planned, not implemented.
+  A NestJS REST API for product and order management, built with PostgreSQL and TypeORM.
+  It includes transactional inventory handling, soft deletion, database migrations,
+  seed scripts, request validation, and OpenAPI documentation.
 </p>
 
 <p align="center">
@@ -15,92 +15,125 @@
   <img src="https://img.shields.io/badge/PostgreSQL-Database-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/TypeORM-ORM-FE0803?logo=typeorm&logoColor=white" alt="TypeORM" />
   <img src="https://img.shields.io/badge/Swagger-OpenAPI-85EA2D?logo=swagger&logoColor=black" alt="Swagger OpenAPI" />
+  <img src="https://img.shields.io/badge/Jest-Tests-C21325?logo=jest&logoColor=white" alt="Jest" />
 </p>
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [Implemented Features](#implemented-features)
 - [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
+- [Architecture and Project Structure](#architecture-and-project-structure)
 - [Run Locally](#run-locally)
 - [Database Schema](#database-schema)
-- [API Endpoints](#api-endpoints)
-- [Product Request Flow](#product-request-flow)
-- [Orders and Background Jobs](#orders-and-background-jobs)
-- [Preventing Overselling](#preventing-overselling)
+- [API Reference](#api-reference)
+- [Order Processing Flow](#order-processing-flow)
+- [Inventory Concurrency and Overselling](#inventory-concurrency-and-overselling)
+- [Tests](#tests)
 - [Deployment](#deployment)
-- [Worker Deployment](#worker-deployment)
-- [Remaining Work](#remaining-work)
+- [Background Worker Status](#background-worker-status)
+- [Known Limitations and Next Steps](#known-limitations-and-next-steps)
+
+## Overview
+
+Mini Order Management is a backend project for managing products and customer orders.
+The API uses a feature-oriented NestJS structure with application contracts separating
+business use cases from TypeORM persistence adapters. PostgreSQL constraints provide
+additional data-integrity guarantees beyond request validation.
+
+The API listens on port `3001` by default and uses the `/api` global route prefix.
 
 ## Implemented Features
 
-- `GET /api/products` with pagination, name search, and minimum/maximum price
-  filters.
-- DTO-based request validation and transformation.
-- PostgreSQL persistence through TypeORM.
-- A versioned TypeORM migration; schema synchronization is disabled.
-- A CSV seed command for 100 sample products. Existing SKUs are skipped.
-- `GET /api/health`, which reports process liveness, timestamp, and uptime.
-- Swagger UI at `/api/docs`.
-
-The product API currently implements listing only. Product creation, single-item
-read, update, and soft-delete endpoints are not implemented yet.
+- Product CRUD: create, list, get by UUID, partially update, and soft-delete products.
+- Product listing with pagination, case-insensitive name search, and inclusive price filters.
+- DTO transformation and validation for request bodies, query parameters, and UUID path values.
+- SKU uniqueness enforced by PostgreSQL; duplicate SKU errors are returned as HTTP `409`.
+- Order creation in a database transaction, including inventory decrement and purchase-time
+  product and price snapshots.
+- Order listing with pagination and optional status filter, plus order detail with item snapshots.
+- Order cancellation for `PENDING` and `CONFIRMED` orders, with stock restoration in a transaction.
+- Row locking and conditional stock updates to prevent concurrent orders from overselling.
+- TypeORM migrations, product and order seed commands, a process liveness endpoint, and Swagger UI.
 
 ## Technology Stack
 
-- Node.js and TypeScript
+- Node.js 20.6 or later and TypeScript
 - NestJS 11
-- PostgreSQL with TypeORM
+- PostgreSQL and TypeORM
+- `class-validator` and `class-transformer`
 - Swagger / OpenAPI
-- Jest and Supertest dependencies are present, but E2E test files are currently
-  not included in the repository.
+- Jest for unit tests
 
-BullMQ and Redis are **not integrated yet**. Order processing and a background
-worker described below are plans, not existing runtime features.
-
-## Project Structure
+## Architecture and Project Structure
 
 ```text
 src/
-├── app.module.ts                 # Root module and application-wide wiring
-├── main.ts                       # Bootstrap, global API prefix, validation, Swagger
+├── app.module.ts
+├── main.ts                         # Bootstrap, /api prefix, validation, Swagger, startup URLs
 ├── database/
-│   ├── config/
-│   │   ├── data-source.ts        # TypeORM CLI DataSource
-│   │   └── typeorm-options.ts    # Shared PostgreSQL options; synchronize is off
-│   ├── entities/                 # TypeORM persistence entities
-│   ├── migrations/               # Explicit schema changes
-│   └── seeds/products/           # Product CSV and seed command
+│   ├── config/                     # TypeORM application and CLI configuration
+│   ├── entities/                   # Product, order, and order-item persistence models
+│   ├── enums/                     # Persistence-related order status values
+│   ├── migrations/                # Explicit PostgreSQL schema changes
+│   └── seeds/
+│       ├── products/               # 100-product CSV and product seed command
+│       └── orders/                 # Order seed command using existing products
 └── modules/
-    ├── health/                   # Liveness endpoint
-    └── products/
-        ├── application/          # Use case and repository contract
-        ├── infrastructure/       # TypeORM repository implementation
-        └── presentation/         # Controller and request DTO
+    ├── health/
+    │   └── presentation/controllers/
+    ├── products/
+    │   ├── application/            # Use cases, repository contracts, application errors
+    │   ├── infrastructure/         # TypeORM read/write adapters
+    │   └── presentation/           # HTTP controller and DTOs
+    └── orders/
+        ├── application/            # Use cases, repository contracts, application errors
+        ├── infrastructure/         # TypeORM adapters, separated into read and write
+        └── presentation/           # HTTP controller and DTOs
 ```
 
-The product listing request flows through the HTTP controller and validated
-DTO, then the application service, repository contract, and TypeORM repository.
-Database query construction stays in the infrastructure layer.
+The presentation layer validates HTTP input and maps application errors to HTTP responses.
+Application services coordinate use cases through repository contracts. Infrastructure
+adapters own TypeORM queries, transactions, row locks, and persistence mapping.
 
 ## Run Locally
 
 ### Prerequisites
 
-- Node.js 20.6 or later and npm (`--env-file` was added in
-  [Node.js 20.6](https://nodejs.org/download/release/v20.6.0/docs/api/cli.html#--env-fileconfig))
-- A PostgreSQL database, for example a Neon project
+- Node.js 20.6 or later and npm. The scripts use Node's `--env-file` option.
+- A reachable PostgreSQL database. A Neon connection string is supported when configured
+  with the SSL settings required by the provider.
 
-Redis is not required for the features currently implemented.
+Redis is not required by the implemented features; background jobs are not integrated.
 
-### Install and configure
+### Step 1: Clone the repository
 
-```bash
+```powershell
+git clone https://github.com/DaoNgocAnh25092004/Mini-Order-Management.git
+```
+
+### Step 2: Open the project directory
+
+```powershell
+cd Mini-Order-Management
+```
+
+### Step 3: Install dependencies
+
+```powershell
 npm ci
 ```
 
-Create `.env` from `.env.example` (PowerShell users can run
-`Copy-Item .env.example .env`) and set the PostgreSQL connection string:
+### Step 4: Create your local environment file
+
+```powershell
+Copy-Item .env.example .env
+```
+
+### Step 5: Configure PostgreSQL and the local API URL
+
+Open `.env` and replace the database placeholder with your PostgreSQL connection string.
+Keep the local API settings as shown, or change them if you need a different port:
 
 ```dotenv
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=verify-full
@@ -109,206 +142,321 @@ NODE_ENV=development
 API_URL=http://localhost:3001/api
 ```
 
-Use the connection string supplied by your database provider and URL-encode
-special characters in credentials when required. `API_URL` is the public API
-base URL used in the startup summary; it should include `/api`. `PORT` controls
-the listening port.
+`API_URL` is the externally usable API base URL and should include `/api`. If it is not
+provided, startup output is derived from the address NestJS is listening on. URL-encode
+special characters in database credentials when required by the connection string.
 
-### Create the database schema and seed sample data
+### Step 6: Create the database schema
 
-Run migrations explicitly; TypeORM `synchronize` is disabled:
+Run the migrations after confirming that `DATABASE_URL` points to the database you intend
+to use:
 
-```bash
+```powershell
 npm run migration
 ```
 
-Optionally import the 100 sample products from the CSV:
+### Step 7: Seed the sample products
 
-```bash
+This imports up to 100 products from the CSV. Existing SKUs are skipped and their records
+are not overwritten.
+
+```powershell
 npm run seed:products
 ```
 
-The seed command inserts products whose SKUs do not already exist and leaves
-existing rows unchanged.
+### Step 8: (Optional) Seed sample orders
 
-### Start the API
+Run this only after the products are seeded and when you want sample order data. It creates
+up to 10 orders using active products from your database and decrements their stock. Existing
+seed orders are skipped when you run the command again.
 
-```bash
+```powershell
+npm run seed:orders
+```
+
+### Step 9: Start the API
+
+```powershell
 npm run dev
 ```
 
-The development command loads `.env` and starts NestJS in watch mode. With the
-example configuration, the main URLs are:
+The development command starts NestJS in watch mode. With the example environment, the API
+uses port `3001` and these URLs:
 
 - API base: `http://localhost:3001/api`
-- Products: `http://localhost:3001/api/products`
+- Swagger UI: `http://localhost:3001/api/docs`
 - Health: `http://localhost:3001/api/health`
-- Swagger: `http://localhost:3001/api/docs`
+- Products: `http://localhost:3001/api/products`
+- Orders: `http://localhost:3001/api/orders`
+
+### Step 10: Verify the API
+
+Open Swagger to try the endpoints, or request the health endpoint to confirm that the API
+process is responding:
+
+```powershell
+Invoke-RestMethod http://localhost:3001/api/health
+```
+
+To run the automated tests separately:
+
+```powershell
+npm test -- --runInBand
+```
 
 ## Database Schema
 
-The current migration creates one table, `products`:
+Schema changes are managed by TypeORM migrations; `synchronize` is disabled. UUID primary
+keys are generated by PostgreSQL. Prices use `numeric(12, 2)` and are represented as strings
+in TypeScript so decimal values are not converted to binary floating-point numbers.
 
-| Column       | PostgreSQL type         | Meaning / constraints                                                                             |
-| ------------ | ----------------------- | ------------------------------------------------------------------------------------------------- |
-| `id`         | `uuid`                  | Primary key generated by PostgreSQL                                                               |
-| `sku`        | `varchar(64)`           | Required, unique, and not blank                                                                   |
-| `name`       | `varchar(200)`          | Required and not blank                                                                            |
-| `price`      | `numeric(12, 2)`        | Required and non-negative; exposed as a string by the read contract to preserve decimal precision |
-| `stock`      | `integer`               | Required and non-negative                                                                         |
-| `created_at` | `timestamptz`           | Creation timestamp, generated by PostgreSQL                                                       |
-| `updated_at` | `timestamptz`           | Last-update timestamp, managed by TypeORM                                                         |
-| `deleted_at` | `timestamptz`, nullable | Soft-delete marker; deleted rows are excluded by the current listing query                        |
+### `products`
 
-The schema is represented by `ProductEntity` and the migration in
-`src/database/migrations`. Apply changes through migrations rather than
-`synchronize`.
+| Column       | Type                   | Purpose and constraints                 |
+| ------------ | ---------------------- | --------------------------------------- |
+| `id`         | `uuid`                 | Primary key                             |
+| `sku`        | `varchar(64)`          | Required, non-blank, unique             |
+| `name`       | `varchar(200)`         | Required and non-blank                  |
+| `price`      | `numeric(12, 2)`       | Required and non-negative               |
+| `stock`      | `integer`              | Required and non-negative               |
+| `created_at` | `timestamptz`          | Creation timestamp                      |
+| `updated_at` | `timestamptz`          | Last-update timestamp                   |
+| `deleted_at` | nullable `timestamptz` | Soft-delete marker; `NULL` means active |
 
-TypeORM also maintains a migration-history table (named `migrations` by
-default). It records which migrations have been applied; it is infrastructure
-metadata, not an e-commerce entity.
+Soft-deleted products are omitted from normal product reads and cannot be used to create an
+order. The SKU unique index applies to all rows, including soft-deleted products, so a deleted
+product's SKU cannot currently be reused.
 
-## API Endpoints
+### `orders`
 
-### `GET /api/products`
+| Column           | Type           | Purpose and constraints                                   |
+| ---------------- | -------------- | --------------------------------------------------------- |
+| `id`             | `uuid`         | Primary key                                               |
+| `customer_name`  | `varchar(200)` | Required and non-blank                                    |
+| `customer_email` | `varchar(254)` | Required                                                  |
+| `status`         | `varchar(20)`  | Defaults to `PENDING`; checked against supported statuses |
+| `created_at`     | `timestamptz`  | Creation timestamp; indexed for order listing             |
+| `updated_at`     | `timestamptz`  | Last-update timestamp                                     |
 
-Implemented query parameters:
+Supported statuses are `PENDING`, `CONFIRMED`, and `CANCELLED`. A composite index on
+`(status, created_at)` supports status-filtered order listing.
 
-| Parameter  | Description                             | Default / limits                                                        |
-| ---------- | --------------------------------------- | ----------------------------------------------------------------------- |
-| `page`     | Page number                             | `1`; integer greater than or equal to 1                                 |
-| `limit`    | Items per page                          | `10`; integer from 1 to 100                                             |
-| `search`   | Case-insensitive search by product name | Optional; maximum 200 characters                                        |
-| `minPrice` | Inclusive minimum price                 | Optional; non-negative, up to 2 decimal places                          |
-| `maxPrice` | Inclusive maximum price                 | Optional; non-negative, up to 2 decimal places and not below `minPrice` |
+### `order_items`
 
-The response contains `items`, `page`, `limit`, `total`, and `totalPages`.
+| Column         | Type             | Purpose and constraints                                       |
+| -------------- | ---------------- | ------------------------------------------------------------- |
+| `id`           | `uuid`           | Primary key                                                   |
+| `order_id`     | `uuid`           | Required foreign key to `orders`; cascades on hard delete     |
+| `product_id`   | `uuid`           | Required foreign key to `products`; hard delete is restricted |
+| `product_sku`  | `varchar(64)`    | SKU snapshot at purchase time                                 |
+| `product_name` | `varchar(200)`   | Product name snapshot at purchase time                        |
+| `quantity`     | `integer`        | Must be greater than zero                                     |
+| `unit_price`   | `numeric(12, 2)` | Non-negative purchase-time price snapshot                     |
+
+Indexes are defined for `order_items.order_id` and `order_items.product_id`. Products are
+soft-deleted rather than hard-deleted, so existing order-item references and purchase history
+remain intact.
+
+TypeORM also maintains a migration-history table to record which migrations have been applied.
+
+## API Reference
+
+All routes are under `/api`. Swagger provides the interactive contract at `/api/docs`.
+
+### Products
+
+| Method and route           | Purpose                    | Success response |
+| -------------------------- | -------------------------- | ---------------- |
+| `POST /api/products`       | Create a product           | `201 Created`    |
+| `GET /api/products`        | List and filter products   | `200 OK`         |
+| `GET /api/products/:id`    | Get one product by UUID    | `200 OK`         |
+| `PATCH /api/products/:id`  | Partially update a product | `200 OK`         |
+| `DELETE /api/products/:id` | Soft-delete a product      | `204 No Content` |
+
+`GET /api/products` supports:
+
+| Query parameter | Behavior and validation                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| `page`          | 1-based integer; defaults to `1`, maximum `1,000,000`                                         |
+| `limit`         | Integer from `1` to `100`; defaults to `10`                                                   |
+| `search`        | Optional, case-insensitive substring match on product name; maximum 200 characters            |
+| `minPrice`      | Optional inclusive lower bound; non-negative, up to 2 decimal places                          |
+| `maxPrice`      | Optional inclusive upper bound; non-negative, up to 2 decimal places and not below `minPrice` |
+
+The paginated response contains `items`, `page`, `limit`, `total`, and `totalPages`. Invalid
+input or UUIDs return `400`; missing or soft-deleted products return `404`; duplicate SKUs
+return `409`.
 
 Example:
 
 ```http
-GET /api/products?page=1&limit=10&search=phone&minPrice=100&maxPrice=500
+GET /api/products?page=1&limit=10&search=keyboard&minPrice=100&maxPrice=500
 ```
 
-### `GET /api/health`
+Product creation body:
 
-Returns a lightweight liveness response containing `status`, `timestamp`, and
-`uptimeSeconds`. This endpoint reports that the API process is responding; it
-does not verify database or Redis connectivity.
-
-### Swagger
-
-OpenAPI documentation is served at `/api/docs`.
-
-## Product Request Flow
-
-For the implemented listing endpoint:
-
-1. `ProductsController` receives the HTTP query.
-2. `GetProductsQueryDto` transforms and validates the query values.
-3. `GetProductsService` delegates the use case through the
-   `ProductReadRepository` contract.
-4. `TypeOrmProductReadRepository` builds the parameterized PostgreSQL query,
-   applies filters and pagination, and maps persistence entities to response
-   items.
-
-## Orders and Background Jobs
-
-**Status: not implemented.** There is no order table or order endpoint, and the
-repository currently has no BullMQ queue, Redis configuration, job producer, or
-worker process.
-
-The intended flow when these features are added is:
-
-1. Validate the order request and product quantities.
-2. In one PostgreSQL transaction, verify and reserve/decrement stock and create
-   the order and its items.
-3. Commit the transaction before dispatching asynchronous follow-up work.
-4. Enqueue post-order work such as notifications or invoice generation in
-   BullMQ. A transactional outbox should be considered so a database commit
-   cannot silently lose its corresponding job if Redis is unavailable.
-5. Let a separate worker consume jobs with retries and idempotent handlers.
-
-This describes a proposed design; none of these order/job steps are currently
-implemented.
-
-## Preventing Overselling
-
-**Status: not implemented for orders.** The products table prevents negative
-stock values, but there is no order flow that reserves or decrements stock yet.
-The database check constraint alone is not a complete overselling strategy.
-
-When order creation is implemented, stock must be checked and changed atomically
-inside the same transaction as the order write. One suitable pattern is a
-conditional update:
-
-```sql
-UPDATE products
-SET stock = stock - $1
-WHERE id = $2
-  AND deleted_at IS NULL
-  AND stock >= $1
-RETURNING id, stock;
+```json
+{
+    "sku": "SKU-1001",
+    "name": "Wireless Keyboard",
+    "price": "499.99",
+    "stock": 25
+}
 ```
 
-If the update returns no row, the product is missing, deleted, or has
-insufficient stock; reject the order and roll back the transaction. For an
-order with multiple products, all reservations and order rows must commit or
-roll back together. Idempotency should also be enforced so retries do not
-decrement stock twice.
+### Orders
+
+| Method and route               | Purpose                                                | Success response |
+| ------------------------------ | ------------------------------------------------------ | ---------------- |
+| `POST /api/orders`             | Create an order and decrement inventory                | `201 Created`    |
+| `GET /api/orders`              | List orders with pagination and optional status filter | `200 OK`         |
+| `GET /api/orders/:id`          | Get order details and item snapshots by UUID           | `200 OK`         |
+| `PATCH /api/orders/:id/cancel` | Cancel an eligible order and restore inventory         | `200 OK`         |
+
+`POST /api/orders` accepts `customerName`, `customerEmail`, and `items`. The request must
+contain 1–100 items; each `productId` must be a UUID and each `quantity` must be a positive
+integer within the PostgreSQL `integer` range. Repeated product IDs are combined before the
+repository creates the order.
+
+```json
+{
+    "customerName": "Nguyen Van An",
+    "customerEmail": "customer@example.com",
+    "items": [
+        {
+            "productId": "124f6fd1-9de3-4ad7-9408-729fccfe0fa0",
+            "quantity": 2
+        }
+    ]
+}
+```
+
+Order creation returns `400` for invalid input, `404` if a requested product is missing or
+soft-deleted, and `409` when available stock is insufficient. The order is created as
+`PENDING`; each item stores the product name, SKU, and price used when the order was placed.
+
+`GET /api/orders` supports `page` (default `1`, maximum `1,000,000`), `limit` (default `10`,
+maximum `100`), and optional `status` (`PENDING`, `CONFIRMED`, or `CANCELLED`). List results
+are summaries; `GET /api/orders/:id` returns the associated item snapshots.
+
+Cancellation is allowed only while an order is `PENDING` or `CONFIRMED`. Successful
+cancellation restores inventory and changes the status to `CANCELLED`. Invalid UUIDs return
+`400`, unknown orders return `404`, and an order in a non-cancellable status returns `409`.
+
+### Health
+
+`GET /api/health` returns `status`, an ISO timestamp, and `uptimeSeconds`. This is a process
+liveness endpoint only; it does not check PostgreSQL or other dependencies.
+
+## Order Processing Flow
+
+1. The controller validates the request DTO, including nested item fields.
+2. `CreateOrderService` merges repeated product IDs and rejects a merged quantity that would
+   exceed PostgreSQL's `integer` limit.
+3. The write repository starts a database transaction and locks active product rows in a
+   deterministic ID order.
+4. It verifies that every product exists and has enough stock, creates the `PENDING` order,
+   and conditionally decrements stock.
+5. It stores each order item with purchase-time name, SKU, and unit-price snapshots.
+6. The transaction commits only when the order, all items, and all inventory updates succeed;
+   any error rolls the entire operation back.
+
+Order listing applies the optional status filter and pagination. Order detail reads the item
+snapshots rather than reconstructing historical values from the current product record.
+
+Cancellation locks the order row, verifies its status, restores each item's quantity in a
+stable product order, and then saves `CANCELLED`. If any inventory restoration or save fails,
+the transaction rolls back. A concurrent second cancellation waits for the first transaction
+and then sees the updated status, preventing a second stock restoration.
+
+## Inventory Concurrency and Overselling
+
+The order-creation transaction uses two safeguards:
+
+1. **Pessimistic row lock:** product rows are selected with `FOR UPDATE` semantics and ordered
+   by product ID. A competing transaction for the same product waits for the lock, then
+   evaluates the committed stock value.
+2. **Conditional decrement:** each inventory update includes `stock >= requested quantity`.
+   If exactly one row is not updated, the repository raises an application error and the
+   transaction rolls back.
+
+For example, if one unit remains and two customers attempt to buy it concurrently, one
+transaction can decrement stock and commit. The waiting transaction then observes insufficient
+stock and fails with `409 Conflict`; it cannot create a partial order or make stock negative.
+Sorting product IDs consistently also reduces deadlocks when orders contain multiple products.
+
+This protects inventory from concurrent overselling, but the API does not yet accept an
+idempotency key. A client retry after an uncertain response is not guaranteed to reuse the
+original order.
+
+## Tests
+
+Run the test suite with:
+
+```bash
+npm test -- --runInBand
+```
+
+Run one test file by name:
+
+```bash
+npx jest --runInBand create-order.service.spec.ts
+```
+
+Current Jest tests cover order-creation service behavior (valid creation, insufficient-stock
+error propagation, duplicate-item merging, integer overflow, and unexpected repository
+errors), order cancellation repository behavior (eligible statuses, duplicate cancellation,
+missing orders, and inventory-restoration failure), order-list query behavior, and order-detail
+service behavior.
+
+These are unit tests using mocks; they do not start PostgreSQL or prove real database lock
+behavior under concurrent HTTP requests. No HTTP E2E or real-PostgreSQL concurrency test is
+currently included.
 
 ## Deployment
 
-The API can be built with:
+Build and run the API with:
 
 ```bash
 npm ci
 npm run build
+npm run start:prod
 ```
 
-Configure the deployment environment with:
+Configure these environment variables in the deployment environment:
 
-- `DATABASE_URL`: production PostgreSQL connection string; use
-  `sslmode=verify-full` when supported by the provider ([PostgreSQL SSL modes](https://www.postgresql.org/docs/current/libpq-ssl.html)).
-- `PORT`: the port assigned by the hosting platform.
-- `NODE_ENV=production`.
-- `API_URL`: the externally reachable API base URL, including `/api`, for
-  example `https://api.example.com/api`.
+| Variable       | Purpose                                                                     |
+| -------------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL` | PostgreSQL connection string; use the SSL settings required by the provider |
+| `PORT`         | Listening port assigned by the platform                                     |
+| `NODE_ENV`     | Set to `production`                                                         |
+| `API_URL`      | Public API base URL including `/api`, such as `https://api.example.com/api` |
 
-Apply migrations as a one-off release/deployment step before serving traffic.
-The existing `npm run migration` command reads `.env`, so the migration runner
-must have that file populated with the production `DATABASE_URL` (or the script
-must be adapted to the hosting platform's injected environment variables).
-Do not run `migration:revert` as a routine deploy step; the current migration's
-`down` method drops the products table.
+Apply migrations as a release step before sending traffic. The current `npm run migration`
+script explicitly loads `.env`; platforms that only inject environment variables must provide
+that file for the migration command or adapt the script to use the platform environment.
+Do not run `npm run migration:revert` as a routine deployment action: the current `down`
+migrations drop their corresponding tables.
 
-After building, the production entry point is `dist/main.js`. The existing
-`npm run start:prod` script also loads `.env`; on platforms that inject
-environment variables and do not provide a `.env` file, use `node dist/main.js`
-as the start command or adapt the script accordingly.
+The production build is emitted to `dist/`; `npm run start:prod` loads `.env` and starts the
+compiled NestJS entry point. For a platform that injects environment variables without a
+`.env` file, use an appropriate start command such as `node dist/main.js` or adjust the script.
+The repository does not currently include a Dockerfile, hosting-provider configuration, or
+CI/CD deployment pipeline.
 
-No hosting-provider-specific deployment configuration, Docker image, or CI/CD
-pipeline is included in the repository yet.
+## Background Worker Status
 
-## Worker Deployment
+There is currently no BullMQ/Redis integration, job producer, worker entry point, or worker
+deployment script. The HTTP API and order transactions are implemented, but asynchronous
+notifications, invoice generation, and reliable post-commit job delivery are not. A separate
+worker should not be deployed until those components and their retry/idempotency behavior exist.
 
-**Status: not deployable yet.** There is no worker entry point or start script,
-and BullMQ/Redis are not dependencies. Once implemented, deploy the worker as a
-separate long-running process/service from the same codebase or release image.
-Configure its Redis connection and queue settings through environment variables,
-and scale worker concurrency independently from the HTTP API. The worker must
-be idempotent and safe to retry; do not deploy a placeholder worker command
-until the consumer and entry point exist.
+## Known Limitations and Next Steps
 
-## Remaining Work
-
-- Implement `POST /api/products`, `GET /api/products/:id`,
-  `PATCH /api/products/:id`, and soft-delete `DELETE /api/products/:id`.
-- Implement order persistence and order endpoints.
-- Add transactional inventory reservation/decrement and idempotency controls.
-- Integrate BullMQ and Redis, then implement job producers and a worker.
-- Decide and implement reliable post-commit job delivery, such as a transactional
-  outbox.
-- Add automated tests if/when the project scope requires them. E2E spec files
-  are currently not present.
-- Add provider-specific deployment, migration-release, and worker configuration.
+- No payment integration or order-confirmation endpoint is implemented. `CONFIRMED` is a
+  supported persisted status and may be used by other workflows, but this API does not set it.
+- Client-request idempotency is not implemented for order creation.
+- Background jobs, BullMQ, Redis, and a transactional outbox are not implemented.
+- Automated tests currently focus on selected order service and repository behavior; product
+  endpoint tests, HTTP E2E tests, and tests against a real PostgreSQL instance are not included.
+- Deployment automation, containerization, and worker deployment configuration remain future work.
