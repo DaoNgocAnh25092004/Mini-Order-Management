@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Body,
     ConflictException,
     Controller,
@@ -6,6 +7,7 @@ import {
     NotFoundException,
     Param,
     ParseUUIDPipe,
+    Patch,
     Post,
     Query,
 } from '@nestjs/common';
@@ -28,20 +30,24 @@ import { ProductSkuConflictError } from '@/modules/products/application/errors/p
 import { CreateProductService } from '@/modules/products/application/services/create-product.service';
 import { GetProductByIdService } from '@/modules/products/application/services/get-product-by-id.service';
 import { GetProductsService } from '@/modules/products/application/services/get-products.service';
+import { UpdateProductService } from '@/modules/products/application/services/update-product.service';
 import { ProductNotFoundError } from '@/modules/products/application/errors/product-not-found.error';
 import { CreateProductDto } from '@/modules/products/presentation/dto/create-product.dto';
 import { GetProductsQueryDto } from '@/modules/products/presentation/dto/get-products-query.dto';
+import { UpdateProductDto } from '@/modules/products/presentation/dto/update-product.dto';
 
 @ApiTags('Products')
 @Controller('products')
 export class ProductsController {
-    // Nhận các use case độc lập để đọc danh sách, đọc chi tiết và tạo sản phẩm.
+    // Nhận use case đọc và ghi để controller chỉ xử lý giao thức HTTP.
     constructor(
         private readonly getProductsService: GetProductsService,
         private readonly getProductByIdService: GetProductByIdService,
         private readonly createProductService: CreateProductService,
+        private readonly updateProductService: UpdateProductService,
     ) {}
 
+    // Lấy thông tin một sản phẩm theo ID
     @Get(':id')
     @ApiOperation({ summary: 'Lấy thông tin một sản phẩm theo ID' })
     @ApiParam({
@@ -98,6 +104,49 @@ export class ProductsController {
         try {
             return await this.createProductService.execute(body);
         } catch (error: unknown) {
+            if (error instanceof ProductSkuConflictError) {
+                throw new ConflictException(error.message);
+            }
+
+            throw error;
+        }
+    }
+
+    // Cập nhật một phần thông tin sản phẩm
+    @Patch(':id')
+    @ApiOperation({ summary: 'Cập nhật một phần thông tin sản phẩm' })
+    @ApiParam({
+        name: 'id',
+        format: 'uuid',
+        example: '124f6fd1-9de3-4ad7-9408-729fccfe0fa0',
+    })
+    @ApiOkResponse({ description: 'Sản phẩm đã được cập nhật.' })
+    @ApiBadRequestResponse({
+        description: 'ID phải là UUID và body phải có dữ liệu hợp lệ.',
+    })
+    @ApiNotFoundResponse({ description: 'Không tìm thấy sản phẩm.' })
+    @ApiConflictResponse({ description: 'SKU đã tồn tại.' })
+    // Chỉ cho sửa các trường DTO cho phép; UUID, sản phẩm thiếu và SKU trùng có mã HTTP riêng.
+    async updateProduct(
+        @Param('id', new ParseUUIDPipe()) id: string,
+        @Body() body: UpdateProductDto,
+    ): Promise<ProductListItem> {
+        // PATCH rỗng không tạo thay đổi nhưng có thể làm sai updatedAt, nên bị từ chối bằng 400.
+        if (!body || Object.keys(body).length === 0) {
+            throw new BadRequestException(
+                'Cần cung cấp ít nhất một trường để cập nhật.',
+            );
+        }
+
+        try {
+            return await this.updateProductService.execute(id, body);
+        } catch (error: unknown) {
+            // Lỗi không tìm thấy sản phẩm được chuyển thành HTTP 404
+            if (error instanceof ProductNotFoundError) {
+                throw new NotFoundException(error.message);
+            }
+
+            // Lỗi SKU trùng được chuyển thành HTTP 409
             if (error instanceof ProductSkuConflictError) {
                 throw new ConflictException(error.message);
             }

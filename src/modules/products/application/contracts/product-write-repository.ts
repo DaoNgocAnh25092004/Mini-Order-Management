@@ -10,7 +10,14 @@ export interface CreateProductInput {
     stock: number;
 }
 
-// Cổng ghi sản phẩm trả representation đồng nhất với API đọc danh sách.
+// Input PATCH chỉ chứa các trường sản phẩm được phép thay đổi.
+export type UpdateProductInput = Partial<CreateProductInput>;
+
+// Cổng ghi trả representation thống nhất và dùng null để báo sản phẩm không tồn tại.
 export interface ProductWriteRepository {
     create(input: CreateProductInput): Promise<ProductListItem>;
+    update(
+        id: string,
+        input: UpdateProductInput,
+    ): Promise<ProductListItem | null>;
 }

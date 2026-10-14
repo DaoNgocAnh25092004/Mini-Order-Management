@@ -6,11 +6,11 @@ import { PRODUCT_WRITE_REPOSITORY } from '@/modules/products/application/contrac
 import { CreateProductService } from '@/modules/products/application/services/create-product.service';
 import { GetProductByIdService } from '@/modules/products/application/services/get-product-by-id.service';
 import { GetProductsService } from '@/modules/products/application/services/get-products.service';
+import { UpdateProductService } from '@/modules/products/application/services/update-product.service';
 import { ProductsController } from '@/modules/products/presentation/controllers/products.controller';
 import { TypeOrmProductReadRepository } from '@/modules/products/infrastructure/repositories/typeorm-product-read.repository';
 import { TypeOrmProductWriteRepository } from '@/modules/products/infrastructure/repositories/typeorm-product-write.repository';
 
-// Gom controller, use case và adapter đọc riêng cho feature Products.
 @Module({
     imports: [TypeOrmModule.forFeature([ProductEntity])],
     controllers: [ProductsController],
@@ -18,6 +18,7 @@ import { TypeOrmProductWriteRepository } from '@/modules/products/infrastructure
         GetProductsService,
         GetProductByIdService,
         CreateProductService,
+        UpdateProductService,
         TypeOrmProductReadRepository,
         TypeOrmProductWriteRepository,
         {

@@ -6,6 +6,7 @@ import type { ProductListItem } from '@/modules/products/application/contracts/p
 import type {
     CreateProductInput,
     ProductWriteRepository,
+    UpdateProductInput,
 } from '@/modules/products/application/contracts/product-write-repository';
 import { ProductSkuConflictError } from '@/modules/products/application/errors/product-sku-conflict.error';
 
@@ -51,6 +52,34 @@ export class TypeOrmProductWriteRepository implements ProductWriteRepository {
             return this.toProductItem(savedProduct);
         } catch (error: unknown) {
             // Chỉ đổi lỗi unique SKU thành conflict; lỗi kết nối/schema tiếp tục được ném nguyên trạng.
+            if (isSkuUniqueViolation(error)) {
+                throw new ProductSkuConflictError();
+            }
+
+            throw error;
+        }
+    }
+
+    // Cập nhật một phần sản phẩm còn hoạt động và giữ nguyên lỗi SKU trùng từ PostgreSQL.
+    async update(
+        id: string,
+        input: UpdateProductInput,
+    ): Promise<ProductListItem | null> {
+        // findOneBy tự loại sản phẩm đã soft-delete; null giúp application ánh xạ thành 404.
+        const product = await this.products.findOneBy({ id });
+
+        if (!product) {
+            return null;
+        }
+
+        // Chỉ ghi đè các thuộc tính DTO gửi lên, giữ nguyên những trường bị bỏ qua.
+        Object.assign(product, input);
+
+        try {
+            const savedProduct = await this.products.save(product);
+            return this.toProductItem(savedProduct);
+        } catch (error: unknown) {
+            // Chỉ chuyển đúng unique violation của SKU thành lỗi nghiệp vụ 409.
             if (isSkuUniqueViolation(error)) {
                 throw new ProductSkuConflictError();
             }
