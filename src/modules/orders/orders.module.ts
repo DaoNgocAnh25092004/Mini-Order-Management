@@ -6,6 +6,7 @@ import { ProductEntity } from '@/database/entities/product.entity';
 import { ORDER_READ_REPOSITORY } from '@/modules/orders/application/contracts/order-read-repository';
 import { ORDER_WRITE_REPOSITORY } from '@/modules/orders/application/contracts/order-write-repository';
 import { CreateOrderService } from '@/modules/orders/application/services/create-order/create-order.service';
+import { CancelOrderService } from '@/modules/orders/application/services/cancel-order/cancel-order.service';
 import { GetOrderByIdService } from '@/modules/orders/application/services/get-order-by-id/get-order-by-id.service';
 import { ListOrdersService } from '@/modules/orders/application/services/list-orders/list-orders.service';
 import { TypeOrmOrderReadRepository } from '@/modules/orders/infrastructure/repositories/read/typeorm-order-read.repository';
@@ -19,6 +20,7 @@ import { OrdersController } from '@/modules/orders/presentation/controllers/orde
     controllers: [OrdersController],
     providers: [
         CreateOrderService,
+        CancelOrderService,
         GetOrderByIdService,
         ListOrdersService,
         TypeOrmOrderReadRepository,

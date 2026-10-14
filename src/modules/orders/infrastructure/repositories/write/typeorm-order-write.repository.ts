@@ -10,7 +10,10 @@ import type {
     CreateOrderInput,
     OrderWriteRepository,
 } from '@/modules/orders/application/contracts/order-write-repository';
+import type { OrderDetail } from '@/modules/orders/application/contracts/order-read-repository';
 import { InsufficientStockError } from '@/modules/orders/application/errors/insufficient-stock.error';
+import { OrderCancellationNotAllowedError } from '@/modules/orders/application/errors/order-cancellation-not-allowed.error';
+import { OrderNotFoundError } from '@/modules/orders/application/errors/order-not-found.error';
 import { OrderProductNotFoundError } from '@/modules/orders/application/errors/order-product-not-found.error';
 
 @Injectable()
@@ -136,6 +139,85 @@ export class TypeOrmOrderWriteRepository implements OrderWriteRepository {
                 createdAt: savedOrder.createdAt,
                 updatedAt: savedOrder.updatedAt,
                 items: savedItems.map((item) => ({
+                    id: item.id,
+                    productId: item.productId,
+                    productSku: item.productSku,
+                    productName: item.productName,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                })),
+            };
+        });
+    }
+
+    // Hủy đơn và hoàn kho nguyên tử: mọi thay đổi cùng commit, hoặc cùng rollback khi có lỗi.
+    async cancelOrder(orderId: string): Promise<OrderDetail> {
+        // Transaction boundary giúp thao tác hoàn kho và hủy đơn luôn commit hoặc rollback cùng nhau.
+        return this.dataSource.transaction(async (manager) => {
+            // BƯỚC 1: Khóa dòng order trước khi đọc trạng thái; request hủy đồng thời phải chờ transaction này kết thúc.
+            // Nhờ vậy request chờ sẽ đọc trạng thái mới, không thể cùng thấy PENDING rồi hoàn kho hai lần.
+            const order = await manager
+                .getRepository(OrderEntity)
+                .createQueryBuilder('order')
+                .setLock('pessimistic_write')
+                .where('order.id = :orderId', { orderId })
+                .getOne();
+
+            // Không có order thì dừng ngay, chưa đọc order item hay thay đổi bất kỳ sản phẩm nào.
+            if (!order) {
+                throw new OrderNotFoundError(orderId);
+            }
+
+            // BƯỚC 2: Chỉ cho hủy đơn PENDING/CONFIRMED; CANCELLED hoặc trạng thái khác bị từ chối trước khi hoàn kho.
+            if (
+                order.status !== OrderStatus.PENDING &&
+                order.status !== OrderStatus.CONFIRMED
+            ) {
+                throw new OrderCancellationNotAllowedError(
+                    orderId,
+                    order.status,
+                );
+            }
+
+            // BƯỚC 3: Đọc các mặt hàng đã lưu trong đơn và sắp xếp ổn định theo productId trước khi cập nhật kho.
+            // Các transaction xử lý nhiều sản phẩm cùng thứ tự sẽ giảm nguy cơ khóa chéo gây deadlock.
+            const items = await manager
+                .getRepository(OrderItemEntity)
+                .findBy({ orderId: order.id });
+            const itemsInLockOrder = [...items].sort(
+                (left, right) =>
+                    left.productId.localeCompare(right.productId) ||
+                    left.id.localeCompare(right.id),
+            );
+
+            // BƯỚC 4: Hoàn lại đúng quantity của từng item; chỉ lọc theo ID để sản phẩm soft-delete vẫn được hoàn kho.
+            for (const item of itemsInLockOrder) {
+                const result = await manager.increment(
+                    ProductEntity,
+                    { id: item.productId },
+                    'stock',
+                    item.quantity,
+                );
+
+                // Không cập nhật đúng một product thường báo dữ liệu tham chiếu bị lệch; ném lỗi để rollback toàn bộ transaction.
+                if (result.affected !== 1) {
+                    throw new OrderProductNotFoundError(item.productId);
+                }
+            }
+
+            // BƯỚC 5: Chỉ chuyển sang CANCELLED sau khi tất cả sản phẩm đã hoàn kho thành công.
+            // Nếu lưu trạng thái thất bại, transaction cũng rollback các lần tăng stock ở bước trước.
+            order.status = OrderStatus.CANCELLED;
+            const cancelledOrder = await manager.save(OrderEntity, order);
+
+            return {
+                id: cancelledOrder.id,
+                customerName: cancelledOrder.customerName,
+                customerEmail: cancelledOrder.customerEmail,
+                status: cancelledOrder.status,
+                createdAt: cancelledOrder.createdAt,
+                updatedAt: cancelledOrder.updatedAt,
+                items: itemsInLockOrder.map((item) => ({
                     id: item.id,
                     productId: item.productId,
                     productSku: item.productSku,

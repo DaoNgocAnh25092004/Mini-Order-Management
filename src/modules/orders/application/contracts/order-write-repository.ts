@@ -1,5 +1,6 @@
 // Hợp đồng tạo đơn: application chỉ trao đổi dữ liệu đơn hàng, không biết TypeORM.
 import type { OrderStatus } from '@/database/enums/order-status.enum';
+import type { OrderDetail } from '@/modules/orders/application/contracts/order-read-repository';
 
 export const ORDER_WRITE_REPOSITORY = Symbol('ORDER_WRITE_REPOSITORY');
 
@@ -36,4 +37,5 @@ export interface CreatedOrder {
 
 export interface OrderWriteRepository {
     create(input: CreateOrderInput): Promise<CreatedOrder>;
+    cancelOrder(id: string): Promise<OrderDetail>;
 }

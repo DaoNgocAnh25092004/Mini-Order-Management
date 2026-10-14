@@ -10,6 +10,7 @@ import {
     NotFoundException,
     Param,
     ParseUUIDPipe,
+    Patch,
     Post,
     Query,
 } from '@nestjs/common';
@@ -30,8 +31,10 @@ import type {
 } from '@/modules/orders/application/contracts/order-read-repository';
 import type { CreatedOrder } from '@/modules/orders/application/contracts/order-write-repository';
 import { OrderStatus } from '@/database/enums/order-status.enum';
+import { CancelOrderService } from '@/modules/orders/application/services/cancel-order/cancel-order.service';
 import { InsufficientStockError } from '@/modules/orders/application/errors/insufficient-stock.error';
 import { InvalidOrderError } from '@/modules/orders/application/errors/invalid-order.error';
+import { OrderCancellationNotAllowedError } from '@/modules/orders/application/errors/order-cancellation-not-allowed.error';
 import { OrderNotFoundError } from '@/modules/orders/application/errors/order-not-found.error';
 import { OrderProductNotFoundError } from '@/modules/orders/application/errors/order-product-not-found.error';
 import { CreateOrderService } from '@/modules/orders/application/services/create-order/create-order.service';
@@ -48,6 +51,7 @@ export class OrdersController {
         private readonly createOrderService: CreateOrderService,
         private readonly getOrderByIdService: GetOrderByIdService,
         private readonly listOrdersService: ListOrdersService,
+        private readonly cancelOrderService: CancelOrderService,
     ) {}
 
     // Tạo đơn hàng mới
@@ -105,6 +109,40 @@ export class OrdersController {
     })
     getOrders(@Query() query: GetOrdersQueryDto): Promise<OrderListPage> {
         return this.listOrdersService.execute(query);
+    }
+
+    // Hủy đơn hàng và hoàn lại tồn kho
+    @Patch(':id/cancel')
+    @ApiOperation({
+        summary: 'Hủy đơn hàng và hoàn lại tồn kho',
+    })
+    @ApiParam({ name: 'id', description: 'UUID của đơn hàng', format: 'uuid' })
+    @ApiOkResponse({ description: 'Đơn hàng đã hủy và được hoàn tồn kho.' })
+    @ApiBadRequestResponse({
+        description: 'ID đơn hàng không đúng định dạng UUID.',
+    })
+    @ApiNotFoundResponse({ description: 'Không tìm thấy đơn hàng.' })
+    @ApiConflictResponse({
+        description: 'Đơn hàng không ở trạng thái có thể hủy.',
+    })
+    async cancelOrder(
+        @Param('id', new ParseUUIDPipe()) id: string,
+    ): Promise<OrderDetail> {
+        try {
+            return await this.cancelOrderService.execute(id);
+        } catch (error: unknown) {
+            // Không tìm thấy đơn hàng → 404 Not Found.
+            if (error instanceof OrderNotFoundError) {
+                throw new NotFoundException(error.message);
+            }
+
+            // Đơn hàng không ở trạng thái có thể hủy → 409 Conflict.
+            if (error instanceof OrderCancellationNotAllowedError) {
+                throw new ConflictException(error.message);
+            }
+
+            throw error;
+        }
     }
 
     // Tìm đơn hàng theo ID

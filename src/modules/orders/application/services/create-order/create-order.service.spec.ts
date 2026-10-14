@@ -29,6 +29,7 @@ describe('CreateOrderService', () => {
     beforeEach(async () => {
         mockOrderWriteRepository = {
             create: jest.fn(),
+            cancelOrder: jest.fn(),
         };
 
         moduleRef = await Test.createTestingModule({
