@@ -29,6 +29,10 @@ lerna-debug.log*
 *.sublime-workspace
 docs
 ./docs
+skills
+AGENTS.md
+tmp
+.vscode
 
 # IDE - VSCode
 .vscode/*
