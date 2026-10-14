@@ -1,0 +1,101 @@
+sku,name,price,stock
+DEMO-0001,Điện thoại thông minh Nova X1,7990000,24
+DEMO-0002,Điện thoại thông minh Nova X2,10490000,18
+DEMO-0003,Điện thoại thông minh Orbit A5,5690000,32
+DEMO-0004,Điện thoại thông minh Orbit A7,6890000,27
+DEMO-0005,Điện thoại thông minh Pixelight P10,12990000,15
+DEMO-0006,Điện thoại thông minh Pixelight P12,15990000,12
+DEMO-0007,Điện thoại thông minh MobiCore M3,3990000,41
+DEMO-0008,Điện thoại thông minh MobiCore M5,4790000,36
+DEMO-0009,Điện thoại thông minh ZenWave Z8,8990000,21
+DEMO-0010,Điện thoại thông minh ZenWave Z10,11990000,16
+DEMO-0011,Laptop AeroBook 14,16990000,11
+DEMO-0012,Laptop AeroBook 16,21990000,8
+DEMO-0013,Laptop WorkMate 14,14990000,13
+DEMO-0014,Laptop WorkMate 15,18990000,9
+DEMO-0015,Laptop GameForce G5,26990000,6
+DEMO-0016,Laptop GameForce G7,32990000,5
+DEMO-0017,Máy tính bảng TabGo 10,6990000,17
+DEMO-0018,Máy tính bảng TabGo 11 Pro,10990000,10
+DEMO-0019,Máy đọc sách ReadLite 6,3290000,22
+DEMO-0020,Máy đọc sách ReadLite 7,4290000,14
+DEMO-0021,Tai nghe không dây SoundBud S1,890000,50
+DEMO-0022,Tai nghe không dây SoundBud S2 Pro,1590000,38
+DEMO-0023,Tai nghe chụp tai StudioBeat 3,2190000,19
+DEMO-0024,Tai nghe chụp tai StudioBeat 5,3290000,14
+DEMO-0025,Loa Bluetooth PocketBoom,1190000,29
+DEMO-0026,Loa Bluetooth RoomWave,2490000,17
+DEMO-0027,Loa thông minh HomeVoice Mini,1890000,20
+DEMO-0028,Micro thu âm ClearCast USB,1790000,16
+DEMO-0029,Bàn phím cơ KeyCraft K87,1490000,23
+DEMO-0030,Chuột không dây SwiftMouse M2,690000,44
+DEMO-0031,Sạc dự phòng PowerNest 10000,590000,48
+DEMO-0032,Sạc dự phòng PowerNest 20000,990000,31
+DEMO-0033,Củ sạc nhanh VoltMax 30W,390000,60
+DEMO-0034,Củ sạc nhanh VoltMax 65W,790000,35
+DEMO-0035,Cáp USB-C FlexCable 1m,120000,90
+DEMO-0036,Cáp USB-C FlexCable 2m,170000,72
+DEMO-0037,Hub chuyển đổi MultiPort 6in1,1190000,25
+DEMO-0038,Ổ cứng SSD PocketDrive 1TB,2290000,18
+DEMO-0039,Thẻ nhớ MicroSD SpeedCard 128GB,490000,39
+DEMO-0040,Webcam ClearView 1080p,1390000,21
+DEMO-0041,Đèn bàn LED StudyGlow,490000,33
+DEMO-0042,Quạt tuần hoàn AirLoop 12,1290000,18
+DEMO-0043,Máy lọc không khí PureHome 20,3490000,9
+DEMO-0044,Robot hút bụi CleanPath R1,5990000,7
+DEMO-0045,Camera an ninh SafeCam C2,1190000,26
+DEMO-0046,Chuông cửa thông minh DoorBell D1,1690000,15
+DEMO-0047,Ổ cắm thông minh SmartPlug P2,390000,41
+DEMO-0048,Cảm biến nhiệt độ HomeSense T1,450000,28
+DEMO-0049,Máy tạo ẩm MistMaker 3,990000,16
+DEMO-0050,Máy hút bụi cầm tay DustAway V2,1890000,13
+DEMO-0051,Bình giữ nhiệt InoxTherm 500ml,320000,47
+DEMO-0052,Bình giữ nhiệt InoxTherm 750ml,420000,34
+DEMO-0053,Bộ hộp cơm FreshBox 3 ngăn,280000,52
+DEMO-0054,Bộ hộp bảo quản FreshBox 5 món,390000,38
+DEMO-0055,Ấm đun nước QuickBoil 1.5L,690000,22
+DEMO-0056,Ấm siêu tốc QuickBoil 1.8L,890000,19
+DEMO-0057,Máy xay sinh tố BlendEasy 600W,1190000,14
+DEMO-0058,Máy xay cầm tay BlendEasy Go,790000,20
+DEMO-0059,Nồi chiên không dầu CrispCook 5L,2490000,11
+DEMO-0060,Nồi cơm điện DailyRice 1.8L,1590000,13
+DEMO-0061,Balo đi học UrbanPack 18L,590000,30
+DEMO-0062,Balo laptop CityPack 15 inch,890000,24
+DEMO-0063,Túi đeo chéo MoveBag,390000,45
+DEMO-0064,Ví đựng thẻ SlimWallet,220000,57
+DEMO-0065,Ô gấp chống tia UV RainGuard,280000,40
+DEMO-0066,Bình nước thể thao ActiveBottle 700ml,190000,63
+DEMO-0067,Đồng hồ thông minh FitTrack S3,1990000,16
+DEMO-0068,Vòng đeo tay sức khỏe FitTrack Band,990000,21
+DEMO-0069,Kính chống ánh sáng xanh ClearLens,350000,48
+DEMO-0070,Gối cổ du lịch TravelRest,240000,37
+DEMO-0071,Thảm tập yoga FlexMat 6mm,490000,28
+DEMO-0072,Dây kháng lực PowerBand bộ 5 mức,320000,34
+DEMO-0073,Dây nhảy tốc độ SpeedRope,180000,51
+DEMO-0074,Tạ tay cao su 2kg cặp đôi,390000,18
+DEMO-0075,Tạ tay cao su 5kg cặp đôi,890000,12
+DEMO-0076,Bóng đá sân cỏ nhân tạo MatchBall số 5,450000,25
+DEMO-0077,Bóng rổ luyện tập CourtBall số 7,520000,17
+DEMO-0078,Vợt cầu lông AeroRacket 300,690000,14
+DEMO-0079,Bộ cầu lông ShuttlePro 6 quả,160000,43
+DEMO-0080,Găng tay tập gym GripFlex,250000,31
+DEMO-0081,Sổ tay DailyNotes A5,65000,100
+DEMO-0082,Sổ kế hoạch PlanBook tuần,95000,74
+DEMO-0083,Bút gel SmoothWrite 0.5mm hộp 10 cây,85000,88
+DEMO-0084,Bút máy ClassicPen màu đen,145000,42
+DEMO-0085,Bút chì gỗ SketchPencil hộp 12 cây,72000,66
+DEMO-0086,Bộ bút màu ArtBox 24 màu,195000,29
+DEMO-0087,Giấy ghi chú MemoStack 5 màu,38000,93
+DEMO-0088,Kẹp tài liệu PaperClip hộp 100 chiếc,29000,120
+DEMO-0089,Bìa hồ sơ DocumentCase A4 bộ 10 cái,69000,58
+DEMO-0090,Bảng trắng mini NoteBoard 30x40cm,220000,23
+DEMO-0091,Sách nhập môn lập trình TypeScript,189000,26
+DEMO-0092,Sách thực hành Node.js căn bản,215000,19
+DEMO-0093,Sách thiết kế API RESTful,239000,15
+DEMO-0094,Sách PostgreSQL cho người mới,229000,17
+DEMO-0095,Sách tư duy cấu trúc dữ liệu,199000,22
+DEMO-0096,Bộ flashcard tiếng Anh giao tiếp,129000,33
+DEMO-0097,Bộ xếp hình sáng tạo 120 chi tiết,349000,20
+DEMO-0098,Bộ lắp ráp robot giáo dục MiniBot,690000,11
+DEMO-0099,Đèn ngủ cảm ứng MoonLight,290000,27
+DEMO-0100,Giá đỡ điện thoại FlexStand,150000,46
