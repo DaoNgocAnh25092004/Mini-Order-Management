@@ -3,6 +3,9 @@ import {
     ConflictException,
     Controller,
     Get,
+    NotFoundException,
+    Param,
+    ParseUUIDPipe,
     Post,
     Query,
 } from '@nestjs/common';
@@ -10,8 +13,10 @@ import {
     ApiBadRequestResponse,
     ApiConflictResponse,
     ApiCreatedResponse,
+    ApiNotFoundResponse,
     ApiOkResponse,
     ApiOperation,
+    ApiParam,
     ApiQuery,
     ApiTags,
 } from '@nestjs/swagger';
@@ -21,18 +26,46 @@ import type {
 } from '@/modules/products/application/contracts/product-read-repository';
 import { ProductSkuConflictError } from '@/modules/products/application/errors/product-sku-conflict.error';
 import { CreateProductService } from '@/modules/products/application/services/create-product.service';
+import { GetProductByIdService } from '@/modules/products/application/services/get-product-by-id.service';
 import { GetProductsService } from '@/modules/products/application/services/get-products.service';
+import { ProductNotFoundError } from '@/modules/products/application/errors/product-not-found.error';
 import { CreateProductDto } from '@/modules/products/presentation/dto/create-product.dto';
 import { GetProductsQueryDto } from '@/modules/products/presentation/dto/get-products-query.dto';
 
 @ApiTags('Products')
 @Controller('products')
 export class ProductsController {
-    // Nhận hai use case độc lập: đọc danh sách và tạo sản phẩm.
+    // Nhận các use case độc lập để đọc danh sách, đọc chi tiết và tạo sản phẩm.
     constructor(
         private readonly getProductsService: GetProductsService,
+        private readonly getProductByIdService: GetProductByIdService,
         private readonly createProductService: CreateProductService,
     ) {}
+
+    @Get(':id')
+    @ApiOperation({ summary: 'Lấy thông tin một sản phẩm theo ID' })
+    @ApiParam({
+        name: 'id',
+        format: 'uuid',
+        example: '124f6fd1-9de3-4ad7-9408-729fccfe0fa0',
+    })
+    @ApiOkResponse({ description: 'Thông tin sản phẩm.' })
+    @ApiBadRequestResponse({ description: 'ID phải có định dạng UUID hợp lệ.' })
+    @ApiNotFoundResponse({ description: 'Không tìm thấy sản phẩm.' })
+    // Kiểm tra UUID trước khi truy vấn và đổi lỗi ứng dụng thành HTTP 404.
+    async getProductById(
+        @Param('id', new ParseUUIDPipe()) id: string,
+    ): Promise<ProductListItem> {
+        try {
+            return await this.getProductByIdService.execute(id);
+        } catch (error: unknown) {
+            if (error instanceof ProductNotFoundError) {
+                throw new NotFoundException(error.message);
+            }
+
+            throw error;
+        }
+    }
 
     // Lấy danh sách sản phẩm có phân trang và bộ lọc
     @Get()

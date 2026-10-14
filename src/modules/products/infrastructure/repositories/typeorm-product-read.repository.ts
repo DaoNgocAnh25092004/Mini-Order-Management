@@ -16,6 +16,13 @@ export class TypeOrmProductReadRepository implements ProductReadRepository {
         private readonly products: Repository<ProductEntity>,
     ) {}
 
+    // Tìm theo UUID; TypeORM tự loại hàng có deletedAt khác null khỏi truy vấn mặc định.
+    async findById(id: string): Promise<ProductListItem | null> {
+        const entity = await this.products.findOneBy({ id });
+
+        return entity ? this.toListItem(entity) : null;
+    }
+
     // Áp dụng bộ lọc có tham số, loại sản phẩm đã xóa mềm và giới hạn kết quả theo trang.
     async list(query: ProductListQuery): Promise<ProductListPage> {
         const productQuery = this.products

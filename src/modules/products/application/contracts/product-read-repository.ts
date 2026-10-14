@@ -32,4 +32,5 @@ export interface ProductListPage {
 // Dùng để inject repository vào service; service chỉ phụ thuộc vào hợp đồng, không phụ thuộc vào implementation cụ thể.
 export interface ProductReadRepository {
     list(query: ProductListQuery): Promise<ProductListPage>;
+    findById(id: string): Promise<ProductListItem | null>;
 }
