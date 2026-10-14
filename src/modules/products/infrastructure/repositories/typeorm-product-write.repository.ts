@@ -1,6 +1,7 @@
+// Adapter TypeORM ghi Products; application chỉ thấy repository contract và lỗi nghiệp vụ.
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { IsNull, QueryFailedError, Repository } from 'typeorm';
 import { ProductEntity } from '@/database/entities/product.entity';
 import type { ProductListItem } from '@/modules/products/application/contracts/product-read-repository';
 import type {
@@ -86,6 +87,18 @@ export class TypeOrmProductWriteRepository implements ProductWriteRepository {
 
             throw error;
         }
+    }
+
+    // Xóa mềm nguyên tử và chỉ nhận sản phẩm chưa bị xóa trước đó.
+    async softDelete(id: string): Promise<boolean> {
+        // Điều kiện deletedAt IS NULL ngăn xóa lặp và tránh nhầm sản phẩm đã xóa thành công.
+        const result = await this.products.softDelete({
+            id,
+            deletedAt: IsNull(),
+        });
+
+        // PostgreSQL trả số dòng bị tác động; 0 nghĩa là ID không tồn tại hoặc đã xóa mềm.
+        return (result.affected ?? 0) > 0;
     }
 
     // Không đưa cột deletedAt hoặc chi tiết persistence vào response API.

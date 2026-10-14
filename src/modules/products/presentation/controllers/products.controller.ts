@@ -1,9 +1,13 @@
+// HTTP boundary của Products: validate đường dẫn, ánh xạ lỗi và công bố contract Swagger.
 import {
     BadRequestException,
     Body,
     ConflictException,
     Controller,
+    Delete,
     Get,
+    HttpCode,
+    HttpStatus,
     NotFoundException,
     Param,
     ParseUUIDPipe,
@@ -16,6 +20,7 @@ import {
     ApiConflictResponse,
     ApiCreatedResponse,
     ApiNotFoundResponse,
+    ApiNoContentResponse,
     ApiOkResponse,
     ApiOperation,
     ApiParam,
@@ -28,6 +33,7 @@ import type {
 } from '@/modules/products/application/contracts/product-read-repository';
 import { ProductSkuConflictError } from '@/modules/products/application/errors/product-sku-conflict.error';
 import { CreateProductService } from '@/modules/products/application/services/create-product.service';
+import { DeleteProductService } from '@/modules/products/application/services/delete-product.service';
 import { GetProductByIdService } from '@/modules/products/application/services/get-product-by-id.service';
 import { GetProductsService } from '@/modules/products/application/services/get-products.service';
 import { UpdateProductService } from '@/modules/products/application/services/update-product.service';
@@ -39,12 +45,13 @@ import { UpdateProductDto } from '@/modules/products/presentation/dto/update-pro
 @ApiTags('Products')
 @Controller('products')
 export class ProductsController {
-    // Nhận use case đọc và ghi để controller chỉ xử lý giao thức HTTP.
+    // Nhận use case đọc, ghi và xóa mềm để controller chỉ xử lý giao thức HTTP.
     constructor(
         private readonly getProductsService: GetProductsService,
         private readonly getProductByIdService: GetProductByIdService,
         private readonly createProductService: CreateProductService,
         private readonly updateProductService: UpdateProductService,
+        private readonly deleteProductService: DeleteProductService,
     ) {}
 
     // Lấy thông tin một sản phẩm theo ID
@@ -149,6 +156,35 @@ export class ProductsController {
             // Lỗi SKU trùng được chuyển thành HTTP 409
             if (error instanceof ProductSkuConflictError) {
                 throw new ConflictException(error.message);
+            }
+
+            throw error;
+        }
+    }
+
+    // Xóa mềm theo UUID; ID sai được pipe trả 400 và ID không còn hoạt động trả 404.
+    @Delete(':id')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Xóa mềm sản phẩm theo ID' })
+    @ApiParam({
+        name: 'id',
+        format: 'uuid',
+        example: '124f6fd1-9de3-4ad7-9408-729fccfe0fa0',
+    })
+    @ApiNoContentResponse({ description: 'Sản phẩm đã được xóa mềm.' })
+    @ApiBadRequestResponse({ description: 'ID phải có định dạng UUID hợp lệ.' })
+    @ApiNotFoundResponse({
+        description: 'Không tìm thấy sản phẩm đang hoạt động.',
+    })
+    async deleteProduct(
+        @Param('id', new ParseUUIDPipe()) id: string,
+    ): Promise<void> {
+        try {
+            await this.deleteProductService.execute(id);
+        } catch (error: unknown) {
+            // Dùng cùng contract 404 với GET/PATCH; lỗi hạ tầng khác không bị che giấu.
+            if (error instanceof ProductNotFoundError) {
+                throw new NotFoundException(error.message);
             }
 
             throw error;

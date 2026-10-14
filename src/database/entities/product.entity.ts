@@ -25,6 +25,7 @@ export class ProductEntity {
     @Column({ type: 'varchar', length: 200 })
     name!: string;
 
+    // Giá sản phẩm được lưu dưới dạng chuỗi để tránh lỗi làm tròn của số thực, ví dụ 0.1 + 0.2 = 0.30000000000000004.
     @Column({ type: 'numeric', precision: 12, scale: 2 })
     price!: string;
 

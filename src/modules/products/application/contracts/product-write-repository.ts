@@ -1,3 +1,4 @@
+// Hợp đồng ghi Products cho application, không để lộ entity hoặc API TypeORM.
 import type { ProductListItem } from '@/modules/products/application/contracts/product-read-repository';
 
 export const PRODUCT_WRITE_REPOSITORY = Symbol('PRODUCT_WRITE_REPOSITORY');
@@ -13,11 +14,12 @@ export interface CreateProductInput {
 // Input PATCH chỉ chứa các trường sản phẩm được phép thay đổi.
 export type UpdateProductInput = Partial<CreateProductInput>;
 
-// Cổng ghi trả representation thống nhất và dùng null để báo sản phẩm không tồn tại.
+// Hợp đồng ghi Products cho application
 export interface ProductWriteRepository {
     create(input: CreateProductInput): Promise<ProductListItem>;
     update(
         id: string,
         input: UpdateProductInput,
     ): Promise<ProductListItem | null>;
+    softDelete(id: string): Promise<boolean>;
 }
