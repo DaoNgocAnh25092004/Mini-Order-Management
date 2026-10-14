@@ -18,7 +18,7 @@ import type {
 import { ORDER_WRITE_REPOSITORY } from '@/modules/orders/application/contracts/order-write-repository';
 import { InsufficientStockError } from '@/modules/orders/application/errors/insufficient-stock.error';
 import { InvalidOrderError } from '@/modules/orders/application/errors/invalid-order.error';
-import { CreateOrderService } from '@/modules/orders/application/services/create-order.service';
+import { CreateOrderService } from '@/modules/orders/application/services/create-order/create-order.service';
 
 describe('CreateOrderService', () => {
     let target: CreateOrderService;
