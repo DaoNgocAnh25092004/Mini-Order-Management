@@ -20,7 +20,8 @@
         "test:e2e": "jest --config ./test/jest-e2e.json",
         "migration": "node --env-file=.env -r tsconfig-paths/register -r ts-node/register ./node_modules/typeorm/cli.js migration:run -d src/database/config/data-source.ts",
         "migration:revert": "node --env-file=.env -r tsconfig-paths/register -r ts-node/register ./node_modules/typeorm/cli.js migration:revert -d src/database/config/data-source.ts",
-        "seed:products": "node --env-file=.env -r tsconfig-paths/register -r ts-node/register ./src/database/seeds/products/seed-products.ts"
+        "seed:products": "node --env-file=.env -r tsconfig-paths/register -r ts-node/register ./src/database/seeds/products/seed-products.ts",
+        "seed:orders": "node --env-file=.env -r tsconfig-paths/register -r ts-node/register ./src/database/seeds/orders/seed-orders.ts"
     },
     "dependencies": {
         "@nestjs/common": "^11.0.1",

@@ -11,6 +11,7 @@ import {
     Param,
     ParseUUIDPipe,
     Post,
+    Query,
 } from '@nestjs/common';
 import {
     ApiBadRequestResponse,
@@ -20,17 +21,24 @@ import {
     ApiOkResponse,
     ApiOperation,
     ApiParam,
+    ApiQuery,
     ApiTags,
 } from '@nestjs/swagger';
-import type { OrderDetail } from '@/modules/orders/application/contracts/order-read-repository';
+import type {
+    OrderDetail,
+    OrderListPage,
+} from '@/modules/orders/application/contracts/order-read-repository';
 import type { CreatedOrder } from '@/modules/orders/application/contracts/order-write-repository';
+import { OrderStatus } from '@/database/enums/order-status.enum';
 import { InsufficientStockError } from '@/modules/orders/application/errors/insufficient-stock.error';
 import { InvalidOrderError } from '@/modules/orders/application/errors/invalid-order.error';
 import { OrderNotFoundError } from '@/modules/orders/application/errors/order-not-found.error';
 import { OrderProductNotFoundError } from '@/modules/orders/application/errors/order-product-not-found.error';
 import { CreateOrderService } from '@/modules/orders/application/services/create-order/create-order.service';
 import { GetOrderByIdService } from '@/modules/orders/application/services/get-order-by-id/get-order-by-id.service';
+import { ListOrdersService } from '@/modules/orders/application/services/list-orders/list-orders.service';
 import { CreateOrderDto } from '@/modules/orders/presentation/dto/create-order.dto';
+import { GetOrdersQueryDto } from '@/modules/orders/presentation/dto/get-orders-query.dto';
 
 @ApiTags('Orders')
 @Controller('orders')
@@ -39,6 +47,7 @@ export class OrdersController {
     constructor(
         private readonly createOrderService: CreateOrderService,
         private readonly getOrderByIdService: GetOrderByIdService,
+        private readonly listOrdersService: ListOrdersService,
     ) {}
 
     // Tạo đơn hàng mới
@@ -75,7 +84,30 @@ export class OrdersController {
         }
     }
 
-    // UUID được xác thực ở HTTP boundary; lỗi đơn không tồn tại được ánh xạ thành 404.
+    // Tìm danh sách đơn hàng có phân trang và lọc trạng thái
+    @Get()
+    @ApiOperation({
+        summary: 'Lấy danh sách đơn hàng có phân trang và lọc trạng thái',
+    })
+    @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+    @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+    @ApiQuery({
+        name: 'status',
+        required: false,
+        enum: OrderStatus,
+        enumName: 'OrderStatus',
+    })
+    @ApiOkResponse({
+        description: 'Danh sách đơn hàng và metadata phân trang.',
+    })
+    @ApiBadRequestResponse({
+        description: 'Page, limit hoặc status không hợp lệ.',
+    })
+    getOrders(@Query() query: GetOrdersQueryDto): Promise<OrderListPage> {
+        return this.listOrdersService.execute(query);
+    }
+
+    // Tìm đơn hàng theo ID
     @Get(':id')
     @ApiOperation({ summary: 'Lấy chi tiết đơn hàng kèm các sản phẩm' })
     @ApiParam({ name: 'id', description: 'UUID của đơn hàng', format: 'uuid' })

@@ -5,6 +5,9 @@ import { Repository } from 'typeorm';
 import { OrderEntity } from '@/database/entities/order.entity';
 import type {
     OrderDetail,
+    OrderListItem,
+    OrderListPage,
+    OrderListQuery,
     OrderReadRepository,
 } from '@/modules/orders/application/contracts/order-read-repository';
 
@@ -14,6 +17,34 @@ export class TypeOrmOrderReadRepository implements OrderReadRepository {
         @InjectRepository(OrderEntity)
         private readonly orders: Repository<OrderEntity>,
     ) {}
+
+    // Lọc status nếu có, phân trang ổn định theo ngày tạo và ID để các trang không xáo trộn tùy ý.
+    async list(query: OrderListQuery): Promise<OrderListPage> {
+        const orderQuery = this.orders.createQueryBuilder('order');
+
+        // Lọc theo status
+        if (query.status !== undefined) {
+            orderQuery.andWhere('order.status = :status', {
+                status: query.status,
+            });
+        }
+
+        // Sắp xếp xác định trước khi skip/take; getManyAndCount đếm toàn bộ kết quả đã lọc.
+        const [entities, total] = await orderQuery
+            .orderBy('order.createdAt', 'DESC')
+            .addOrderBy('order.id', 'ASC')
+            .skip((query.page - 1) * query.limit)
+            .take(query.limit)
+            .getManyAndCount();
+
+        return {
+            items: entities.map((entity) => this.toListItem(entity)),
+            page: query.page,
+            limit: query.limit,
+            total,
+            totalPages: Math.ceil(total / query.limit),
+        };
+    }
 
     // Tải đúng một đơn cùng order_items; không join products vì item phải trả snapshot lịch sử đã lưu.
     async findById(id: string): Promise<OrderDetail | null> {
@@ -43,6 +74,18 @@ export class TypeOrmOrderReadRepository implements OrderReadRepository {
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
             })),
+        };
+    }
+
+    // Chỉ trả trường tóm tắt của đơn; endpoint theo ID mới tải quan hệ order_items.
+    private toListItem(entity: OrderEntity): OrderListItem {
+        return {
+            id: entity.id,
+            customerName: entity.customerName,
+            customerEmail: entity.customerEmail,
+            status: entity.status,
+            createdAt: entity.createdAt,
+            updatedAt: entity.updatedAt,
         };
     }
 }

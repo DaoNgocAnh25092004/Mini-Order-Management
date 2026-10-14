@@ -1,5 +1,5 @@
 // Hợp đồng truy vấn đơn hàng; application chỉ nhận representation, không phụ thuộc TypeORM.
-import { OrderStatus } from '@/database/enums/order-status.enum';
+import type { OrderStatus } from '@/database/enums/order-status.enum';
 
 export const ORDER_READ_REPOSITORY = Symbol('ORDER_READ_REPOSITORY');
 
@@ -24,7 +24,34 @@ export interface OrderDetail {
     items: OrderDetailItem[];
 }
 
-// Port đọc đơn theo ID; null biểu thị không có đơn tương ứng.
+// Bộ lọc và giới hạn trang đã được DTO xác thực trước khi vào application.
+export interface OrderListQuery {
+    page: number;
+    limit: number;
+    status?: OrderStatus;
+}
+
+// Dòng danh sách chỉ gồm thông tin tóm tắt; chi tiết item dành cho endpoint theo ID.
+export interface OrderListItem {
+    id: string;
+    customerName: string;
+    customerEmail: string;
+    status: OrderStatus;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+// Trang danh sách gồm các đơn phù hợp bộ lọc và metadata phân trang.
+export interface OrderListPage {
+    items: OrderListItem[];
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+}
+
+// Port đọc danh sách và chi tiết đơn; null biểu thị không có đơn tương ứng.
 export interface OrderReadRepository {
+    list(query: OrderListQuery): Promise<OrderListPage>;
     findById(id: string): Promise<OrderDetail | null>;
 }

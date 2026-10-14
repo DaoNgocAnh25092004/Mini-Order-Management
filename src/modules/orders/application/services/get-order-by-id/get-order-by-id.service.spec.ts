@@ -2,7 +2,7 @@
 // |-----|-----------------|-----------------------|----------------------------|----------------------------------|
 // | 1   | Tìm thấy đơn    | Trả đủ chi tiết/order_items | Mock repo trả detail; execute | Trả đúng detail; gọi repo đúng ID |
 // | 2   | Không tìm thấy  | Chuyển null thành 404 | Mock repo trả null; execute | Ném OrderNotFoundError có ID     |
-// Nhóm unit test cho GetOrderByIdService; repository được mock nên không cần PostgreSQL.
+
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type {
@@ -23,6 +23,7 @@ describe('GetOrderByIdService', () => {
     // Tạo service với repository mock mới cho từng test để kết quả không rò giữa các case.
     beforeEach(async () => {
         mockOrderReadRepository = {
+            list: jest.fn(),
             findById: jest.fn(),
         };
 
