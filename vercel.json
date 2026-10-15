@@ -1,3 +1,33 @@
 {
-    "$schema": "https://openapi.vercel.sh/vercel.json"
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "rewrites": [
+        {
+            "source": "/api/docs/swagger-ui.css",
+            "destination": "/swagger-ui-assets/swagger-ui.css"
+        },
+        {
+            "source": "/api/docs/swagger-ui-bundle.js",
+            "destination": "/swagger-ui-assets/swagger-ui-bundle.js"
+        },
+        {
+            "source": "/api/docs/swagger-ui-standalone-preset.js",
+            "destination": "/swagger-ui-assets/swagger-ui-standalone-preset.js"
+        },
+        {
+            "source": "/api/docs/favicon-16x16.png",
+            "destination": "/swagger-ui-assets/favicon-16x16.png"
+        },
+        {
+            "source": "/api/docs/favicon-32x32.png",
+            "destination": "/swagger-ui-assets/favicon-32x32.png"
+        },
+        {
+            "source": "/api/docs/oauth2-redirect.html",
+            "destination": "/swagger-ui-assets/oauth2-redirect.html"
+        },
+        {
+            "source": "/api/docs/oauth2-redirect.js",
+            "destination": "/swagger-ui-assets/oauth2-redirect.js"
+        }
+    ]
 }
