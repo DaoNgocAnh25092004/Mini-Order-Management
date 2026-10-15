@@ -5,30 +5,23 @@ import { OrderEntity } from '@/database/entities/order.entity';
 import { OrderItemEntity } from '@/database/entities/order-item.entity';
 import { ProductEntity } from '@/database/entities/product.entity';
 import { ORDER_READ_REPOSITORY } from '@/modules/orders/application/contracts/order-read-repository';
-import { ORDER_PROCESSING_REPOSITORY } from '@/modules/orders/application/contracts/order-processing-repository';
 import { ORDER_WRITE_REPOSITORY } from '@/modules/orders/application/contracts/order-write-repository';
 import { CreateOrderService } from '@/modules/orders/application/services/create-order/create-order.service';
 import { CancelOrderService } from '@/modules/orders/application/services/cancel-order/cancel-order.service';
 import { GetOrderByIdService } from '@/modules/orders/application/services/get-order-by-id/get-order-by-id.service';
 import { ListOrdersService } from '@/modules/orders/application/services/list-orders/list-orders.service';
-import { ProcessOrderService } from '@/modules/orders/application/services/process-order/process-order.service';
 import { TypeOrmOrderReadRepository } from '@/modules/orders/infrastructure/repositories/read/typeorm-order-read.repository';
-import { TypeOrmOrderProcessingRepository } from '@/modules/orders/infrastructure/repositories/write/order-processing/typeorm-order-processing.repository';
 import { TypeOrmOrderWriteRepository } from '@/modules/orders/infrastructure/repositories/write/order-write/typeorm-order-write.repository';
 import { OrdersController } from '@/modules/orders/presentation/controllers/orders.controller';
 import {
     ORDER_PROCESSING_DEFAULT_JOB_OPTIONS,
     ORDER_PROCESSING_QUEUE,
 } from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
-import { TypeOrmOrderProcessingPublisher } from '@/modules/orders/infrastructure/queue/publishers/typeorm-order-processing.publisher';
-import { OrderProcessingProcessor } from '@/modules/orders/infrastructure/queue/processors/order-processing.processor';
-import { OrderProcessingSimulator } from '@/modules/orders/infrastructure/queue/simulators/order-processing.simulator';
 import { GetOrderJobStatusService } from '@/modules/orders/application/services/get-order-job-status/get-order-job-status.service';
 import { ORDER_JOB_STATUS_READER } from '@/modules/orders/application/contracts/order-job-status-reader';
 import { BullMqOrderJobStatusReader } from '@/modules/orders/infrastructure/queue/readers/bullmq-order-job-status.reader';
-import { ExpirePendingOrdersService } from '@/modules/orders/application/services/expire-pending-orders/expire-pending-orders.service';
-import { OrderExpirationScheduler } from '@/modules/orders/infrastructure/queue/schedulers/order-expiration.scheduler';
 
+// Module HTTP của orders; chỉ giữ controller và adapter đọc trạng thái queue, không khởi chạy worker nền.
 @Module({
     imports: [
         BullModule.registerQueue({
@@ -43,24 +36,13 @@ import { OrderExpirationScheduler } from '@/modules/orders/infrastructure/queue/
         CancelOrderService,
         GetOrderByIdService,
         ListOrdersService,
-        ProcessOrderService,
         GetOrderJobStatusService,
-        ExpirePendingOrdersService,
         TypeOrmOrderReadRepository,
-        TypeOrmOrderProcessingRepository,
         TypeOrmOrderWriteRepository,
-        TypeOrmOrderProcessingPublisher,
-        OrderProcessingProcessor,
-        OrderProcessingSimulator,
         BullMqOrderJobStatusReader,
-        OrderExpirationScheduler,
         {
             provide: ORDER_READ_REPOSITORY,
             useExisting: TypeOrmOrderReadRepository,
-        },
-        {
-            provide: ORDER_PROCESSING_REPOSITORY,
-            useExisting: TypeOrmOrderProcessingRepository,
         },
         {
             provide: ORDER_WRITE_REPOSITORY,

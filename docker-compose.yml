@@ -2,7 +2,7 @@
 name: mini-order-management
 
 services:
-    # API NestJS; chỉ khởi động sau khi PostgreSQL và Redis báo sẵn sàng.
+    # API chỉ phục vụ HTTP; publisher/processor/scheduler chạy trong service worker riêng.
     api:
         # Tên cố định bỏ hậu tố -1; đổi lại service này không thể chạy nhiều replica.
         container_name: mini-order-management-api
@@ -25,6 +25,23 @@ services:
         volumes:
             # Cho seed script đọc CSV từ repo; chỉ mount dữ liệu mẫu và chỉ đọc, không đưa fixture vào image.
             - ./src/database/seeds/products:/app/src/database/seeds/products:ro
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        stop_grace_period: 30s
+
+    # Worker chạy outbox publisher, BullMQ processor và scheduler; không mở cổng HTTP.
+    worker:
+        container_name: mini-order-management-worker
+        image: mini-order-management:local
+        command: ['node', 'dist/bootstrap/worker/main.js']
+        restart: unless-stopped
+        environment:
+            NODE_ENV: production
+            DATABASE_URL: postgresql://mini_order:mini_order_dev@postgres:5432/mini_order_management
+            REDIS_URL: redis://redis:6379
         depends_on:
             postgres:
                 condition: service_healthy

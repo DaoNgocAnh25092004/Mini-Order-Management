@@ -49,4 +49,4 @@ USER node
 EXPOSE 3001
 
 # Khởi chạy entry point JavaScript đã được biên dịch; không chạy trực tiếp file TypeScript.
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/bootstrap/api/main.js"]

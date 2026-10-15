@@ -20,6 +20,7 @@ import { getRedisConnectionOptions } from '@/modules/orders/infrastructure/queue
         }),
         HealthModule,
         ProductsModule,
+        // Chỉ đăng ký controller và provider cần cho HTTP; tiến trình nền nằm trong module worker riêng.
         OrdersModule,
     ],
 })

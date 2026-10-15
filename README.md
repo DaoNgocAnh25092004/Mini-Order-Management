@@ -100,33 +100,41 @@ npm run seed:orders
 
 Lệnh sản phẩm nạp tối đa 100 sản phẩm từ CSV. Lệnh đơn hàng là tùy chọn, tạo tối đa 10 đơn và trừ tồn kho tương ứng; chỉ chạy sau khi đã nạp sản phẩm.
 
-**Bước 6 — Chạy API và worker:**
+**Bước 6 — Chạy API và worker riêng:**
+
+Mở hai terminal tại thư mục dự án. Terminal thứ nhất chạy API:
 
 ```powershell
 npm run dev
 ```
 
-Chế độ watch tự khởi động lại khi mã nguồn thay đổi. API, outbox publisher, BullMQ worker và lịch quét đơn hết hạn hiện chạy chung trong tiến trình NestJS.
+Terminal thứ hai chạy worker:
+
+```powershell
+npm run dev:worker
+```
+
+Hai tiến trình dùng chung PostgreSQL và Redis. API nhận request, ghi đơn/outbox và đọc trạng thái job; worker gửi outbox vào BullMQ, xử lý job và đăng ký lịch quét đơn quá hạn.
 
 - API: `http://localhost:3001/api`
 - Swagger: `http://localhost:3001/api/docs`
 - Kiểm tra API: `http://localhost:3001/api/health`
 
-### Chạy toàn bộ bằng Docker Compose
+### Chạy API và worker cùng PostgreSQL, Redis bằng Docker Compose
 
-Nếu muốn API, PostgreSQL và Redis đều chạy trong Docker, thực hiện lần lượt:
+Nếu muốn toàn bộ hệ thống chạy trong Docker, thực hiện lần lượt:
 
 ```powershell
 docker compose build api
 docker compose up -d postgres redis
 docker compose --profile tools run --rm migrate
-docker compose up -d api
+docker compose up -d api worker
 ```
 
-- `build api`: tạo image ứng dụng mà cả API và tác vụ migration dùng chung.
+- `build api`: tạo image ứng dụng dùng chung cho API, worker và tác vụ migration.
 - `up -d postgres redis`: khởi động database và Redis trước.
 - `--profile tools run --rm migrate`: chạy migration một lần rồi xóa container tác vụ.
-- `up -d api`: chạy API cùng worker; Compose chờ PostgreSQL và Redis khỏe mạnh trước khi khởi động.
+- `up -d api worker`: chạy hai tiến trình riêng; Compose chờ PostgreSQL và Redis khỏe mạnh trước khi khởi động.
 
 Nạp dữ liệu mẫu sau khi API đã chạy:
 
@@ -141,10 +149,10 @@ Kiểm tra trạng thái và log:
 
 ```powershell
 docker compose ps
-docker compose logs -f api
+docker compose logs -f api worker
 ```
 
-`logs -f api` đặc biệt hữu ích để xem publisher, worker và scheduler hoạt động. Dừng container nhưng giữ dữ liệu database/Redis bằng:
+Log `api` dùng để theo dõi HTTP; log `worker` dùng để theo dõi publisher, xử lý job và scheduler. Dừng container nhưng giữ dữ liệu database/Redis bằng:
 
 ```powershell
 docker compose down
@@ -447,7 +455,7 @@ docker compose exec postgres psql -U mini_order -d mini_order_management -c "SEL
 docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT p.sku, p.stock, oi.quantity FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = 'PASTE-DISPOSABLE-ORDER-UUID-HERE' ORDER BY p.sku;"
 ```
 
-Kết quả đúng là order `CANCELLED`, có log `ORDER_EXPIRED`, và stock sau test bằng stock đã ghi ở bước 2 cộng `quantity`. Log `ORDER_CONFIRMED` cũ có thể còn vì test chỉ sửa trực tiếp bảng `orders`; đó là lịch sử cũ, không phải scheduler tạo log xác nhận mới. Nếu chưa thấy kết quả, kiểm tra `docker compose logs -f api` để xác nhận ứng dụng và scheduler đang chạy.
+Kết quả đúng là order `CANCELLED`, có log `ORDER_EXPIRED`, và stock sau test bằng stock đã ghi ở bước 2 cộng `quantity`. Log `ORDER_CONFIRMED` cũ có thể còn vì test chỉ sửa trực tiếp bảng `orders`; đó là lịch sử cũ, không phải scheduler tạo log xác nhận mới. Nếu chưa thấy kết quả, kiểm tra `docker compose logs -f worker` để xác nhận scheduler đang chạy.
 
 ## 4. Cách chống bán vượt tồn kho
 
@@ -473,9 +481,23 @@ Test này kiểm tra logic khóa/trừ kho với mock. Chưa có bài kiểm th�
 
 ## 5. Nền tảng triển khai
 
-| Thành phần            | Nền tảng chọn            | Lý do                                                                                                                                                           |
-| --------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API NestJS và Swagger | Vercel                   | Bám sát yêu cầu đề bài về nơi deploy API; Vercel hỗ trợ backend Node.js dưới dạng Functions và có URL HTTPS công khai.                                          |
-| Worker BullMQ         | Render Background Worker | Worker cần chạy liên tục để nhận job từ Redis; Render có loại dịch vụ worker riêng và tài liệu chính thức nêu BullMQ cho Node.js là trường hợp sử dụng phù hợp. |
-| PostgreSQL            | Neon                     | Dùng PostgreSQL được quản lý bên ngoài ứng dụng; API và worker cùng kết nối đến một database qua `DATABASE_URL`.                                                |
-| Redis                 | Upstash                  | BullMQ dùng Redis làm queue; API đọc trạng thái job và worker gửi/nhận job phải kết nối cùng một Redis qua `REDIS_URL`.                                         |
+Đây là kiến trúc triển khai dự kiến; API và worker là hai tiến trình riêng nhưng phải dùng chung `DATABASE_URL` và `REDIS_URL`.
+
+- **API — Vercel:** chọn để đáp ứng yêu cầu deploy API của đề bài. Vercel hỗ trợ NestJS dưới dạng Function ([tài liệu NestJS trên Vercel](https://vercel.com/docs/frameworks/backend/nestjs)). Tuy nhiên, tài liệu Vercel nêu các entry point tự nhận diện như `src/main.ts` hoặc `src/app.ts`; entry point hiện tại là `src/bootstrap/api/main.ts`. Vì vậy, cần xử lý tương thích entry point trước khi coi API đã sẵn sàng deploy lên Vercel.
+- **Worker — Render Background Worker:** worker cần chạy liên tục để nhận job; Render hỗ trợ dịch vụ Background Worker và liệt kê BullMQ là framework cho Node.js ([tài liệu Render](https://render.com/docs/background-workers)).
+- **PostgreSQL — Neon:** API và worker cùng kết nối một database qua `DATABASE_URL`.
+- **Redis — Upstash:** API đọc trạng thái job, worker publish/consume job và cả hai dùng chung `REDIS_URL`. Dùng Redis TCP URL `redis://` hoặc `rediss://` theo cấu hình ứng dụng, không dùng REST URL/token của Upstash.
+
+### Cấu hình worker trên Render
+
+Kết nối Background Worker với cùng GitHub repository và chọn:
+
+| Cấu hình       | Giá trị                   |
+| -------------- | ------------------------- |
+| Build Command  | `npm ci && npm run build` |
+| Start Command  | `npm run start:worker`    |
+| `NODE_ENV`     | `production`              |
+| `DATABASE_URL` | Connection string từ Neon |
+| `REDIS_URL`    | Redis TCP URL từ Upstash  |
+
+API cũng cần `DATABASE_URL` và `REDIS_URL`; Vercel còn cần hoàn tất cấu hình entry point nêu trên. Không đưa connection string hoặc password vào GitHub/README.

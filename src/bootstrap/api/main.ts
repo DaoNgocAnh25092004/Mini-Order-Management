@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from '@/app.module';
+import { AppModule } from '@/bootstrap/api/app.module';
 
 // Khởi tạo API, validation và Swagger; chỉ báo sẵn sàng sau khi cổng lắng nghe thành công.
 async function bootstrap() {
