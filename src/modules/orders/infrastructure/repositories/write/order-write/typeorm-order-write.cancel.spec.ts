@@ -13,7 +13,7 @@ import { OrderStatus } from '@/database/enums/order-status.enum';
 import { OrderCancellationNotAllowedError } from '@/modules/orders/application/errors/order-cancellation-not-allowed.error';
 import { OrderNotFoundError } from '@/modules/orders/application/errors/order-not-found.error';
 import { OrderProductNotFoundError } from '@/modules/orders/application/errors/order-product-not-found.error';
-import { TypeOrmOrderWriteRepository } from '@/modules/orders/infrastructure/repositories/write/typeorm-order-write.repository';
+import { TypeOrmOrderWriteRepository } from '@/modules/orders/infrastructure/repositories/write/order-write/typeorm-order-write.repository';
 
 describe('TypeOrmOrderWriteRepository.cancelOrder', () => {
     const orderId = '124f6fd1-9de3-4ad7-9408-729fccfe0fa0';

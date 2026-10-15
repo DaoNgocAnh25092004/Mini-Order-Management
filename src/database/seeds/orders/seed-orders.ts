@@ -4,7 +4,7 @@ import { AppDataSource } from '@/database/config/data-source';
 import { OrderEntity } from '@/database/entities/order.entity';
 import { ProductEntity } from '@/database/entities/product.entity';
 import { CreateOrderService } from '@/modules/orders/application/services/create-order/create-order.service';
-import { TypeOrmOrderWriteRepository } from '@/modules/orders/infrastructure/repositories/write/typeorm-order-write.repository';
+import { TypeOrmOrderWriteRepository } from '@/modules/orders/infrastructure/repositories/write/order-write/typeorm-order-write.repository';
 
 const seedCustomers = Array.from({ length: 10 }, (_, index) => {
     const sequence = String(index + 1).padStart(2, '0');

@@ -11,6 +11,7 @@ import { DataSource } from 'typeorm';
 import { OrderOutboxEventEntity } from '@/database/entities/order-outbox-event.entity';
 import { OrderOutboxEventType } from '@/database/enums/order-outbox-event-type.enum';
 import {
+    ORDER_PROCESSING_DEFAULT_JOB_OPTIONS,
     ORDER_PROCESSING_JOB,
     ORDER_PROCESSING_QUEUE,
 } from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
@@ -90,7 +91,10 @@ export class TypeOrmOrderProcessingPublisher
                     await this.queue.add(
                         ORDER_PROCESSING_JOB,
                         { orderId: event.orderId },
-                        { jobId: `order-processing-${event.orderId}` },
+                        {
+                            jobId: `order-processing-${event.orderId}`,
+                            ...ORDER_PROCESSING_DEFAULT_JOB_OPTIONS,
+                        },
                     );
 
                     event.publishedAt = new Date();

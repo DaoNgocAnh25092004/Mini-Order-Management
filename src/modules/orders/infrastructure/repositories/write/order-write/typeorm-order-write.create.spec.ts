@@ -8,7 +8,7 @@ import { OrderItemEntity } from '@/database/entities/order-item.entity';
 import { OrderOutboxEventEntity } from '@/database/entities/order-outbox-event.entity';
 import { ProductEntity } from '@/database/entities/product.entity';
 import { OrderOutboxEventType } from '@/database/enums/order-outbox-event-type.enum';
-import { TypeOrmOrderWriteRepository } from '@/modules/orders/infrastructure/repositories/write/typeorm-order-write.repository';
+import { TypeOrmOrderWriteRepository } from '@/modules/orders/infrastructure/repositories/write/order-write/typeorm-order-write.repository';
 
 describe('TypeOrmOrderWriteRepository.create', () => {
     const orderId = '124f6fd1-9de3-4ad7-9408-729fccfe0fa0';
