@@ -26,6 +26,8 @@ import { OrderProcessingSimulator } from '@/modules/orders/infrastructure/queue/
 import { GetOrderJobStatusService } from '@/modules/orders/application/services/get-order-job-status/get-order-job-status.service';
 import { ORDER_JOB_STATUS_READER } from '@/modules/orders/application/contracts/order-job-status-reader';
 import { BullMqOrderJobStatusReader } from '@/modules/orders/infrastructure/queue/readers/bullmq-order-job-status.reader';
+import { ExpirePendingOrdersService } from '@/modules/orders/application/services/expire-pending-orders/expire-pending-orders.service';
+import { OrderExpirationScheduler } from '@/modules/orders/infrastructure/queue/schedulers/order-expiration.scheduler';
 
 @Module({
     imports: [
@@ -43,6 +45,7 @@ import { BullMqOrderJobStatusReader } from '@/modules/orders/infrastructure/queu
         ListOrdersService,
         ProcessOrderService,
         GetOrderJobStatusService,
+        ExpirePendingOrdersService,
         TypeOrmOrderReadRepository,
         TypeOrmOrderProcessingRepository,
         TypeOrmOrderWriteRepository,
@@ -50,6 +53,7 @@ import { BullMqOrderJobStatusReader } from '@/modules/orders/infrastructure/queu
         OrderProcessingProcessor,
         OrderProcessingSimulator,
         BullMqOrderJobStatusReader,
+        OrderExpirationScheduler,
         {
             provide: ORDER_READ_REPOSITORY,
             useExisting: TypeOrmOrderReadRepository,

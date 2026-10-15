@@ -2,40 +2,57 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { ProcessOrderService } from '@/modules/orders/application/services/process-order/process-order.service';
 import {
+    EXPIRE_PENDING_ORDERS_JOB,
     ORDER_PROCESSING_BACKOFF_DELAY_MS,
     ORDER_PROCESSING_MAX_ATTEMPTS,
+    ORDER_PROCESSING_JOB,
     ORDER_PROCESSING_QUEUE,
 } from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
 import { OrderProcessingSimulator } from '@/modules/orders/infrastructure/queue/simulators/order-processing.simulator';
+import type { OrderQueueJobData } from '@/modules/orders/application/contracts/order-queue-job-data';
+import { ExpirePendingOrdersService } from '@/modules/orders/application/services/expire-pending-orders/expire-pending-orders.service';
 
-interface OrderProcessingJobData {
-    orderId: string;
-}
-
-// Worker của queue chỉ nhận orderId và giao xử lý nghiệp vụ cho application service, không truy vấn database trực tiếp.
-// Khi xử lý lỗi, worker ném lỗi lại để BullMQ tự retry; hết lượt mới yêu cầu application chốt đơn thất bại và hoàn kho.
+// Worker phân luồng job xử lý một order và job định kỳ quét order quá hạn; không truy vấn database trực tiếp.
+// Lỗi được trả về BullMQ để retry; chỉ job order thất bại hết lượt mới chuyển đơn FAILED và hoàn kho.
 @Processor(ORDER_PROCESSING_QUEUE)
 export class OrderProcessingProcessor extends WorkerHost {
     constructor(
         private readonly processOrderService: ProcessOrderService,
         private readonly simulator: OrderProcessingSimulator,
+        private readonly expirePendingOrdersService: ExpirePendingOrdersService,
     ) {
         super(); // WorkerHost cần gọi super() để khởi tạo.
     }
 
-    // Mô phỏng công việc rồi xác nhận đơn nếu thành công.
-    // Khi lỗi, chỉ chốt FAILED ở lượt cuối và vẫn trả lỗi về BullMQ để queue cập nhật trạng thái job.
-    async process(job: Job<OrderProcessingJobData>): Promise<void> {
+    // Chọn use case theo job.name; để lỗi thoát ra worker nhằm BullMQ retry theo policy đã cấu hình.
+    async process(job: Job<OrderQueueJobData>): Promise<void> {
         // Bước 1: bổ sung retry policy cho job cũ trong Redis được tạo trước khi publisher cấu hình retry.
         // Chính sách gồm tối đa 3 lượt chạy và exponential backoff (thời gian chờ tăng dần giữa các lượt).
         this.applyRetryPolicy(job);
+
+        // Job định kỳ tự tìm các đơn quá hạn; lỗi được trả cho BullMQ để retry cả lượt quét.
+        if (job.name === EXPIRE_PENDING_ORDERS_JOB) {
+            await this.expirePendingOrdersService.execute();
+            return;
+        }
+
+        // Chỉ job process-order mới có orderId; từ chối tên job lạ hoặc payload sai thay vì xử lý nhầm.
+        if (
+            job.name !== ORDER_PROCESSING_JOB ||
+            !('orderId' in job.data) ||
+            !job.data.orderId
+        ) {
+            throw new Error(`Unsupported order-processing job: ${job.name}`);
+        }
+
+        const { orderId } = job.data;
 
         try {
             // Bước 2: giả lập công việc nền mất vài giây; simulator có thể ném lỗi để kiểm tra cơ chế retry.
             await this.simulator.run();
 
             // Bước 3: chỉ khi mô phỏng thành công mới yêu cầu application xác nhận đơn trong database.
-            await this.processOrderService.confirm(job.data.orderId);
+            await this.processOrderService.confirm(orderId);
         } catch (error: unknown) {
             // attemptsMade chỉ đếm các lượt đã kết thúc; cộng 1 để tính cả lượt hiện tại đang bị lỗi.
             const currentAttempt = job.attemptsMade + 1;
@@ -46,7 +63,7 @@ export class OrderProcessingProcessor extends WorkerHost {
                 // Chỉ lượt cuối mới chốt đơn FAILED.
                 // Application/repository sẽ hoàn kho và cập nhật trạng thái trong cùng transaction.
                 await this.processOrderService.fail(
-                    job.data.orderId,
+                    orderId,
                     this.toFailureReason(error),
                 );
             }
@@ -63,7 +80,7 @@ export class OrderProcessingProcessor extends WorkerHost {
     }
 
     // Bổ sung retry policy cho job cũ; không ghi đè backoff đã được publisher cấu hình sẵn.
-    private applyRetryPolicy(job: Job<OrderProcessingJobData>): void {
+    private applyRetryPolicy(job: Job<OrderQueueJobData>): void {
         // attempts tính cả lượt chạy đầu tiên.
         // Nâng giá trị thiếu/thấp lên 3 để job cũ không bị kết thúc ngay khi gặp lỗi đầu tiên.
         if ((job.opts.attempts ?? 0) < ORDER_PROCESSING_MAX_ATTEMPTS) {

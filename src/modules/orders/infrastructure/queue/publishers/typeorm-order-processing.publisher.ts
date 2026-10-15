@@ -15,6 +15,7 @@ import {
     ORDER_PROCESSING_JOB,
     ORDER_PROCESSING_QUEUE,
 } from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
+import type { OrderQueueJobData } from '@/modules/orders/application/contracts/order-queue-job-data';
 
 // Publisher kiểm tra outbox mỗi giây, mỗi lượt tối đa 25 bản ghi để không giữ khóa DB quá lâu.
 const OUTBOX_POLL_INTERVAL_MS = 1000;
@@ -36,7 +37,7 @@ export class TypeOrmOrderProcessingPublisher
     constructor(
         @InjectDataSource() private readonly dataSource: DataSource,
         @InjectQueue(ORDER_PROCESSING_QUEUE)
-        private readonly queue: Queue,
+        private readonly queue: Queue<OrderQueueJobData>,
     ) {}
 
     // Bắt đầu gửi outbox ngay khi Nest khởi động; vòng kế tiếp chỉ chạy sau khi vòng hiện tại xong.

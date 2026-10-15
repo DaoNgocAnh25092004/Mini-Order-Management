@@ -13,6 +13,7 @@ import {
     ORDER_PROCESSING_JOB,
 } from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
 import { TypeOrmOrderProcessingPublisher } from '@/modules/orders/infrastructure/queue/publishers/typeorm-order-processing.publisher';
+import type { OrderQueueJobData } from '@/modules/orders/application/contracts/order-queue-job-data';
 
 // Mock decorator Nest để Jest CommonJS không cần nạp package BullMQ dạng ESM trong unit test.
 jest.mock('@nestjs/bullmq', () => ({
@@ -22,7 +23,7 @@ jest.mock('@nestjs/bullmq', () => ({
 describe('TypeOrmOrderProcessingPublisher', () => {
     let target: TypeOrmOrderProcessingPublisher;
     let dataSource: DataSource;
-    let queue: Queue;
+    let queue: Queue<OrderQueueJobData>;
     let queueAdd: jest.Mock;
     let event: OrderOutboxEventEntity;
     let queryBuilder: Record<string, jest.Mock>;
@@ -64,7 +65,7 @@ describe('TypeOrmOrderProcessingPublisher', () => {
             ),
         } as unknown as DataSource;
         queueAdd = jest.fn().mockResolvedValue({});
-        queue = { add: queueAdd } as unknown as Queue;
+        queue = { add: queueAdd } as unknown as Queue<OrderQueueJobData>;
         target = new TypeOrmOrderProcessingPublisher(dataSource, queue);
     });
 

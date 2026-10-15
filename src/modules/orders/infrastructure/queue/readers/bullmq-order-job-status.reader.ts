@@ -7,17 +7,14 @@ import type {
     OrderProcessingJobStatus,
 } from '@/modules/orders/application/contracts/order-job-status-reader';
 import { ORDER_PROCESSING_QUEUE } from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
-
-interface OrderProcessingJobData {
-    orderId: string;
-}
+import type { OrderQueueJobData } from '@/modules/orders/application/contracts/order-queue-job-data';
 
 @Injectable()
 export class BullMqOrderJobStatusReader implements OrderJobStatusReader {
     // Inject queue order-processing để adapter chỉ đọc job, không xử lý nghiệp vụ đơn hàng.
     constructor(
         @InjectQueue(ORDER_PROCESSING_QUEUE)
-        private readonly queue: Queue<OrderProcessingJobData>,
+        private readonly queue: Queue<OrderQueueJobData>,
     ) {}
 
     // Tìm job theo ID ổn định do publisher tạo; null nghĩa là queue không còn lưu job đó.

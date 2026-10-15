@@ -4,6 +4,16 @@ export const ORDER_PROCESSING_QUEUE = 'order-processing';
 // Tên loại công việc được ghi lên từng job để worker biết job đó yêu cầu xử lý đơn hàng.
 export const ORDER_PROCESSING_JOB = 'process-order';
 
+// Tên loại job định kỳ dùng để quét và tự hủy đơn PENDING đã quá hạn.
+export const EXPIRE_PENDING_ORDERS_JOB = 'expire-pending-orders';
+
+// ID ổn định giúp nhiều lần Nest khởi động cùng cập nhật một scheduler, không đăng ký lịch trùng.
+export const EXPIRE_PENDING_ORDERS_SCHEDULER_ID =
+    'expire-pending-orders-every-5-minutes';
+
+// Tạo một lượt quét mới sau mỗi 5 phút.
+export const EXPIRE_PENDING_ORDERS_INTERVAL_MS = 5 * 60 * 1000;
+
 // Số lượt xử lý tối đa tính cả lần chạy đầu: 1 lần đầu + tối đa 2 lần retry.
 // Khi cả 3 lượt đều lỗi, processor chuyển đơn sang FAILED và hoàn kho; BullMQ đánh dấu job failed.
 export const ORDER_PROCESSING_MAX_ATTEMPTS = 3;

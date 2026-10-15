@@ -4,11 +4,18 @@
 // | 1   | Xử lý thành công             | Chuyển đơn sang bước xác nhận    | Simulator thành công; gọi process             | Gọi confirm với orderId; không gọi fail               |
 // | 2   | Lỗi còn lượt retry           | Để BullMQ chạy lại job           | Simulator lỗi; job chưa đến lượt cuối         | Ném lại lỗi; cấu hình retry; chưa gọi fail            |
 // | 3   | Lỗi ở lượt cuối              | Chốt đơn thất bại sau retry      | Simulator lỗi; job ở lượt cuối                | Gọi fail với lý do; ném lại lỗi cho BullMQ             |
+// | 4   | Job quét đơn quá hạn          | Chạy use case hết hạn đơn        | Job tên expire-pending-orders; gọi process     | Gọi quét một lần; không chạy simulator/xử lý đơn đơn lẻ |
 
 import type { Job } from 'bullmq';
 import { ProcessOrderService } from '@/modules/orders/application/services/process-order/process-order.service';
-import { ORDER_PROCESSING_MAX_ATTEMPTS } from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
+import {
+    EXPIRE_PENDING_ORDERS_JOB,
+    ORDER_PROCESSING_JOB,
+    ORDER_PROCESSING_MAX_ATTEMPTS,
+} from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
 import { OrderProcessingProcessor } from '@/modules/orders/infrastructure/queue/processors/order-processing.processor';
+import type { OrderQueueJobData } from '@/modules/orders/application/contracts/order-queue-job-data';
+import { ExpirePendingOrdersService } from '@/modules/orders/application/services/expire-pending-orders/expire-pending-orders.service';
 
 // Mock base class/decorator Nest để test processor không cần khởi chạy worker hoặc Redis thật.
 jest.mock('@nestjs/bullmq', () => ({
@@ -24,6 +31,7 @@ describe('OrderProcessingProcessor', () => {
         fail: jest.Mock;
     };
     let simulator: { run: jest.Mock };
+    let expirePendingOrdersService: { execute: jest.Mock };
 
     // Dùng mock cho tầng application và simulator để tập trung kiểm tra quyết định retry của worker.
     beforeEach(() => {
@@ -32,9 +40,13 @@ describe('OrderProcessingProcessor', () => {
             fail: jest.fn().mockResolvedValue(undefined),
         };
         simulator = { run: jest.fn().mockResolvedValue(undefined) };
+        expirePendingOrdersService = {
+            execute: jest.fn().mockResolvedValue(0),
+        };
         target = new OrderProcessingProcessor(
             processOrderService as unknown as ProcessOrderService,
             simulator,
+            expirePendingOrdersService as unknown as ExpirePendingOrdersService,
         );
     });
 
@@ -42,10 +54,11 @@ describe('OrderProcessingProcessor', () => {
     it('should confirm the order when processing succeeds', async () => {
         // 1.1 Arrange: tạo job hợp lệ ở lần chạy đầu và để simulator mặc định thành công.
         const job = {
+            name: ORDER_PROCESSING_JOB,
             data: { orderId },
             attemptsMade: 0,
             opts: { attempts: ORDER_PROCESSING_MAX_ATTEMPTS },
-        } as Job<{ orderId: string }>;
+        } as Job<OrderQueueJobData>;
 
         // 1.2 Act: chạy processor với job xử lý đơn.
         await target.process(job);
@@ -61,10 +74,11 @@ describe('OrderProcessingProcessor', () => {
         const processingError = new Error('Temporary processing failure');
         simulator.run.mockRejectedValue(processingError);
         const job = {
+            name: ORDER_PROCESSING_JOB,
             data: { orderId },
             attemptsMade: 0,
             opts: { attempts: 0 },
-        } as Job<{ orderId: string }>;
+        } as Job<OrderQueueJobData>;
 
         // 2.2 Act: processor chuẩn hóa retry options rồi ném lỗi để BullMQ lên lịch chạy lại.
         await expect(target.process(job)).rejects.toBe(processingError);
@@ -85,10 +99,11 @@ describe('OrderProcessingProcessor', () => {
         const processingError = new Error('Final processing failure');
         simulator.run.mockRejectedValue(processingError);
         const job = {
+            name: ORDER_PROCESSING_JOB,
             data: { orderId },
             attemptsMade: ORDER_PROCESSING_MAX_ATTEMPTS - 1,
             opts: { attempts: ORDER_PROCESSING_MAX_ATTEMPTS },
-        } as Job<{ orderId: string }>;
+        } as Job<OrderQueueJobData>;
 
         // 3.2 Act: chạy lượt cuối; processor yêu cầu application chốt đơn FAILED rồi ném lỗi.
         await expect(target.process(job)).rejects.toBe(processingError);
@@ -99,5 +114,25 @@ describe('OrderProcessingProcessor', () => {
             'Final processing failure',
         );
         expect(processOrderService.confirm).not.toHaveBeenCalled();
+    });
+
+    // TEST 4: job định kỳ chạy use case quét đơn quá hạn, không đi vào nhánh simulator của đơn mới.
+    it('should execute expired-order cleanup for the scheduled job', async () => {
+        // 4.1 Arrange: tạo job định kỳ đúng tên và payload do scheduler đăng ký.
+        const job = {
+            name: EXPIRE_PENDING_ORDERS_JOB,
+            data: { task: 'expire-pending-orders' },
+            attemptsMade: 0,
+            opts: { attempts: ORDER_PROCESSING_MAX_ATTEMPTS },
+        } as Job<OrderQueueJobData>;
+
+        // 4.2 Act: worker nhận job quét và chuyển nó sang use case hết hạn.
+        await target.process(job);
+
+        // 4.3 Assert: gọi đúng use case và không xác nhận/thất bại một orderId cụ thể.
+        expect(expirePendingOrdersService.execute).toHaveBeenCalledTimes(1);
+        expect(simulator.run).not.toHaveBeenCalled();
+        expect(processOrderService.confirm).not.toHaveBeenCalled();
+        expect(processOrderService.fail).not.toHaveBeenCalled();
     });
 });

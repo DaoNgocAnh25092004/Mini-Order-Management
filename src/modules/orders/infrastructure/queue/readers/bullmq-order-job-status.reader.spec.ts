@@ -8,6 +8,7 @@
 
 import type { Queue } from 'bullmq';
 import { BullMqOrderJobStatusReader } from '@/modules/orders/infrastructure/queue/readers/bullmq-order-job-status.reader';
+import type { OrderQueueJobData } from '@/modules/orders/application/contracts/order-queue-job-data';
 
 // Mock decorator Nest để unit test không cần khởi động Redis hoặc worker thật.
 jest.mock('@nestjs/bullmq', () => ({
@@ -18,13 +19,13 @@ describe('BullMqOrderJobStatusReader', () => {
     const orderId = '124f6fd1-9de3-4ad7-9408-729fccfe0fa0';
     const jobId = `order-processing-${orderId}`;
     let target: BullMqOrderJobStatusReader;
-    let queue: Queue<{ orderId: string }>;
+    let queue: Queue<OrderQueueJobData>;
     let getJob: jest.Mock;
 
     // Dùng queue/job mock để chỉ kiểm tra cách adapter chuyển dữ liệu BullMQ.
     beforeEach(() => {
         getJob = jest.fn();
-        queue = { getJob } as unknown as Queue<{ orderId: string }>;
+        queue = { getJob } as unknown as Queue<OrderQueueJobData>;
         target = new BullMqOrderJobStatusReader(queue);
     });
 
