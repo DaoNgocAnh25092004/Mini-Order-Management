@@ -43,6 +43,17 @@ export function getRedisConnectionOptions() {
             ? decodeURIComponent(parsedUrl.password)
             : undefined,
         db: database,
+        // Phát hiện socket chết và thử kết nối lại theo exponential backoff có giới hạn.
+        keepAlive: 10_000,
+        retryStrategy: (attempt: number) => {
+            const backoffMs = Math.min(
+                250 * 2 ** Math.min(attempt - 1, 4),
+                5_000,
+            );
+
+            // Jitter giúp các Vercel instance không đồng loạt dồn kết nối vào Redis khi hồi phục.
+            return backoffMs + Math.floor(Math.random() * 250);
+        },
         ...(parsedUrl.protocol === 'rediss:' ? { tls: {} } : {}),
     };
 }
