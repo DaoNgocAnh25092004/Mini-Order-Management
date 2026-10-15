@@ -483,7 +483,7 @@ Test này kiểm tra logic khóa/trừ kho với mock. Chưa có bài kiểm th�
 
 Đây là kiến trúc triển khai dự kiến; API và worker là hai tiến trình riêng nhưng phải dùng chung `DATABASE_URL` và `REDIS_URL`.
 
-- **API — Vercel:** dùng để triển khai HTTP API theo yêu cầu đề bài. Vercel hỗ trợ NestJS dưới dạng Function ([tài liệu NestJS trên Vercel](https://vercel.com/docs/frameworks/backend/nestjs)). File `src/main.ts` là entry point để Vercel nhận diện ứng dụng và chuyển sang bootstrap API trong `src/bootstrap/api/main.ts`.
+- **API — Vercel:** dùng để triển khai HTTP API theo yêu cầu đề bài. Vercel hỗ trợ NestJS dưới dạng Function ([tài liệu NestJS trên Vercel](https://vercel.com/docs/frameworks/backend/nestjs)). `src/main.ts` chứa bootstrap API và là entry point chuẩn để Vercel nhận diện NestJS; `src/bootstrap/api/main.ts` giữ đường dẫn tương thích với Nest CLI và Docker.
 - **Worker — Railway:** chạy worker thành service riêng để tiến trình luôn hoạt động, nhận và xử lý job BullMQ. Railway cho phép triển khai API và worker từ cùng repository với Start Command riêng cho mỗi service ([hướng dẫn worker trên Railway](https://docs.railway.com/guides/saas-backend)). Worker không cần public domain.
 - **PostgreSQL — Neon:** API và worker cùng kết nối một database qua `DATABASE_URL`.
 - **Redis — Upstash:** API đọc trạng thái job, worker publish/consume job và cả hai dùng chung `REDIS_URL`. Dùng URL Redis TCP; với database bật TLS, dùng dạng `rediss://default:<TOKEN>@<HOST>:6379`. Không dùng REST URL/token của Upstash.
