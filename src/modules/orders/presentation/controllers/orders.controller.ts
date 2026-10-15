@@ -1,4 +1,3 @@
-// HTTP boundary cho POST /orders; DTO xác thực input và lỗi nghiệp vụ thành status REST.
 import {
     BadRequestException,
     Body,
@@ -42,6 +41,9 @@ import { GetOrderByIdService } from '@/modules/orders/application/services/get-o
 import { ListOrdersService } from '@/modules/orders/application/services/list-orders/list-orders.service';
 import { CreateOrderDto } from '@/modules/orders/presentation/dto/create-order.dto';
 import { GetOrdersQueryDto } from '@/modules/orders/presentation/dto/get-orders-query.dto';
+import { GetOrderJobStatusService } from '@/modules/orders/application/services/get-order-job-status/get-order-job-status.service';
+import { OrderProcessingJobNotFoundError } from '@/modules/orders/application/errors/order-processing-job-not-found.error';
+import { OrderJobStatusDto } from '@/modules/orders/presentation/dto/order-job-status.dto';
 
 @ApiTags('Orders')
 @Controller('orders')
@@ -52,6 +54,7 @@ export class OrdersController {
         private readonly getOrderByIdService: GetOrderByIdService,
         private readonly listOrdersService: ListOrdersService,
         private readonly cancelOrderService: CancelOrderService,
+        private readonly getOrderJobStatusService: GetOrderJobStatusService,
     ) {}
 
     // Tạo đơn hàng mới
@@ -139,6 +142,35 @@ export class OrdersController {
             // Đơn hàng không ở trạng thái có thể hủy → 409 Conflict.
             if (error instanceof OrderCancellationNotAllowedError) {
                 throw new ConflictException(error.message);
+            }
+
+            throw error;
+        }
+    }
+
+    // Tra trạng thái job BullMQ của đơn, gồm trạng thái, số lượt chạy và lý do lỗi gần nhất.
+    @Get(':id/jobs')
+    @ApiOperation({ summary: 'Lấy trạng thái job xử lý đơn hàng' })
+    @ApiParam({ name: 'id', description: 'UUID của đơn hàng', format: 'uuid' })
+    @ApiOkResponse({
+        description: 'Trạng thái và thông tin retry của job xử lý đơn.',
+        type: OrderJobStatusDto,
+    })
+    @ApiBadRequestResponse({
+        description: 'ID đơn hàng không đúng định dạng UUID.',
+    })
+    @ApiNotFoundResponse({
+        description: 'Không tìm thấy job xử lý cho đơn hàng này.',
+    })
+    async getOrderJobStatus(
+        @Param('id', new ParseUUIDPipe()) id: string,
+    ): Promise<OrderJobStatusDto> {
+        try {
+            return await this.getOrderJobStatusService.execute(id);
+        } catch (error: unknown) {
+            // Job không còn trong queue thì trả 404
+            if (error instanceof OrderProcessingJobNotFoundError) {
+                throw new NotFoundException(error.message);
             }
 
             throw error;

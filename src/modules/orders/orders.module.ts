@@ -23,6 +23,9 @@ import {
 import { TypeOrmOrderProcessingPublisher } from '@/modules/orders/infrastructure/queue/publishers/typeorm-order-processing.publisher';
 import { OrderProcessingProcessor } from '@/modules/orders/infrastructure/queue/processors/order-processing.processor';
 import { OrderProcessingSimulator } from '@/modules/orders/infrastructure/queue/simulators/order-processing.simulator';
+import { GetOrderJobStatusService } from '@/modules/orders/application/services/get-order-job-status/get-order-job-status.service';
+import { ORDER_JOB_STATUS_READER } from '@/modules/orders/application/contracts/order-job-status-reader';
+import { BullMqOrderJobStatusReader } from '@/modules/orders/infrastructure/queue/readers/bullmq-order-job-status.reader';
 
 @Module({
     imports: [
@@ -39,12 +42,14 @@ import { OrderProcessingSimulator } from '@/modules/orders/infrastructure/queue/
         GetOrderByIdService,
         ListOrdersService,
         ProcessOrderService,
+        GetOrderJobStatusService,
         TypeOrmOrderReadRepository,
         TypeOrmOrderProcessingRepository,
         TypeOrmOrderWriteRepository,
         TypeOrmOrderProcessingPublisher,
         OrderProcessingProcessor,
         OrderProcessingSimulator,
+        BullMqOrderJobStatusReader,
         {
             provide: ORDER_READ_REPOSITORY,
             useExisting: TypeOrmOrderReadRepository,
@@ -56,6 +61,10 @@ import { OrderProcessingSimulator } from '@/modules/orders/infrastructure/queue/
         {
             provide: ORDER_WRITE_REPOSITORY,
             useExisting: TypeOrmOrderWriteRepository,
+        },
+        {
+            provide: ORDER_JOB_STATUS_READER,
+            useExisting: BullMqOrderJobStatusReader,
         },
     ],
 })
