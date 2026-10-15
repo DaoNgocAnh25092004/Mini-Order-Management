@@ -1,2 +1,3 @@
-// Vercel nhận entrypoint CommonJS này và lần theo dist đã được build, không nạp TS alias.
+// Vercel cần thấy NestJS được import trực tiếp để nhận diện framework; ứng dụng chạy từ dist đã build.
+require('@nestjs/core');
 require('./dist/bootstrap/api/main.js');
