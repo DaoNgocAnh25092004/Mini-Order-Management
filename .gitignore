@@ -30,6 +30,8 @@ lerna-debug.log*
 *.sublime-workspace
 docs
 ./docs
+!public/api/docs/
+!public/api/docs/**
 skills
 AGENTS.md
 tmp
