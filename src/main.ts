@@ -9,11 +9,14 @@ require('tsconfig-paths').register({
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from './bootstrap/api/app.module';
 
 // Entry point HTTP chuẩn để Vercel nhận diện NestJS và khởi tạo API.
 // Bootstrap này cũng được dùng lại qua đường dẫn tương thích với Nest CLI và Docker.
 async function bootstrap() {
+    // Nạp động sau khi đăng ký alias để Vercel không resolve cây module quá sớm.
+    const { AppModule } =
+        require('./bootstrap/api/app.module') as typeof import('./bootstrap/api/app.module');
+
     // Tạo NestJS app từ module gốc.
     const app = await NestFactory.create(AppModule);
 
