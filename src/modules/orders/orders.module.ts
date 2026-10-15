@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderEntity } from '@/database/entities/order.entity';
 import { OrderItemEntity } from '@/database/entities/order-item.entity';
@@ -12,9 +13,12 @@ import { ListOrdersService } from '@/modules/orders/application/services/list-or
 import { TypeOrmOrderReadRepository } from '@/modules/orders/infrastructure/repositories/read/typeorm-order-read.repository';
 import { TypeOrmOrderWriteRepository } from '@/modules/orders/infrastructure/repositories/write/typeorm-order-write.repository';
 import { OrdersController } from '@/modules/orders/presentation/controllers/orders.controller';
+import { ORDER_PROCESSING_QUEUE } from '@/modules/orders/infrastructure/queue/config/order-processing.constants';
+import { TypeOrmOrderProcessingPublisher } from '@/modules/orders/infrastructure/queue/publishers/typeorm-order-processing.publisher';
 
 @Module({
     imports: [
+        BullModule.registerQueue({ name: ORDER_PROCESSING_QUEUE }),
         TypeOrmModule.forFeature([OrderEntity, OrderItemEntity, ProductEntity]),
     ],
     controllers: [OrdersController],
@@ -25,6 +29,7 @@ import { OrdersController } from '@/modules/orders/presentation/controllers/orde
         ListOrdersService,
         TypeOrmOrderReadRepository,
         TypeOrmOrderWriteRepository,
+        TypeOrmOrderProcessingPublisher,
         {
             provide: ORDER_READ_REPOSITORY,
             useExisting: TypeOrmOrderReadRepository,

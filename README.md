@@ -25,6 +25,7 @@
 - [Technology Stack](#technology-stack)
 - [Architecture and Project Structure](#architecture-and-project-structure)
 - [Run Locally](#run-locally)
+- [Run with Docker Compose](#run-with-docker-compose)
 - [Database Schema](#database-schema)
 - [API Reference](#api-reference)
 - [Order Processing Flow](#order-processing-flow)
@@ -54,12 +55,14 @@ The API listens on port `3001` by default and uses the `/api` global route prefi
 - Order listing with pagination and optional status filter, plus order detail with item snapshots.
 - Order cancellation for `PENDING` and `CONFIRMED` orders, with stock restoration in a transaction.
 - Row locking and conditional stock updates to prevent concurrent orders from overselling.
+- Transactional outbox publishing to a BullMQ `order-processing` queue using stable job IDs.
 - TypeORM migrations, product and order seed commands, a process liveness endpoint, and Swagger UI.
 
 ## Technology Stack
 
 - Node.js 20.6 or later and TypeScript
 - NestJS 11
+- BullMQ with the NestJS BullMQ integration and Redis
 - PostgreSQL and TypeORM
 - `class-validator` and `class-transformer`
 - Swagger / OpenAPI
@@ -88,7 +91,11 @@ src/
     │   └── presentation/           # HTTP controller and DTOs
     └── orders/
         ├── application/            # Use cases, repository contracts, application errors
-        ├── infrastructure/         # TypeORM adapters, separated into read and write
+        ├── infrastructure/
+        │   ├── queue/
+        │   │   ├── config/          # Redis connection options and queue/job names
+        │   │   └── publishers/      # Outbox publisher and its unit tests
+        │   └── repositories/        # TypeORM read/write adapters
         └── presentation/           # HTTP controller and DTOs
 ```
 
@@ -103,8 +110,10 @@ adapters own TypeORM queries, transactions, row locks, and persistence mapping.
 - Node.js 20.6 or later and npm. The scripts use Node's `--env-file` option.
 - A reachable PostgreSQL database. A Neon connection string is supported when configured
   with the SSL settings required by the provider.
+- A reachable Redis server, required by the outbox publisher and `order-processing` queue.
 
-Redis is not required by the implemented features; background jobs are not integrated.
+The API publishes order-processing jobs, but a worker that consumes and processes them is not
+implemented yet.
 
 ### Step 1: Clone the repository
 
@@ -130,13 +139,14 @@ npm ci
 Copy-Item .env.example .env
 ```
 
-### Step 5: Configure PostgreSQL and the local API URL
+### Step 5: Configure PostgreSQL, Redis, and the local API URL
 
 Open `.env` and replace the database placeholder with your PostgreSQL connection string.
 Keep the local API settings as shown, or change them if you need a different port:
 
 ```dotenv
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=verify-full
+REDIS_URL=redis://localhost:6379
 PORT=3001
 NODE_ENV=development
 API_URL=http://localhost:3001/api
@@ -144,7 +154,9 @@ API_URL=http://localhost:3001/api
 
 `API_URL` is the externally usable API base URL and should include `/api`. If it is not
 provided, startup output is derived from the address NestJS is listening on. URL-encode
-special characters in database credentials when required by the connection string.
+special characters in database credentials when required by the connection string. Use
+`rediss://` for Redis connections that require TLS. `REDIS_URL` supports a Redis database
+number and optional username/password.
 
 ### Step 6: Create the database schema
 
@@ -203,6 +215,63 @@ To run the automated tests separately:
 ```powershell
 npm test -- --runInBand
 ```
+
+## Run with Docker Compose
+
+`Dockerfile` builds a production image in separate build and runtime stages. `docker-compose.yml`
+provides the API, PostgreSQL, and Redis for a local environment. The API image runs as the
+unprivileged `node` user; the PostgreSQL and Redis ports bind to localhost only.
+
+From the repository root, build the API image and start the local dependencies:
+
+```powershell
+docker compose build api
+docker compose up -d postgres redis
+```
+
+Run migrations as an explicit one-off operation, then start the API:
+
+```powershell
+docker compose --profile tools run --rm migrate
+docker compose up -d api
+```
+
+### Seed sample data with Docker (optional)
+
+After the API is running and migrations have completed, run these commands from the
+repository root. The first imports products from the CSV; the second creates up to 10
+sample orders using those real products and reduces their stock accordingly. Existing
+product SKUs and seed orders are skipped if you run the commands again.
+
+If the API container was created before the CSV mount was added, recreate it once so the
+mount becomes available:
+
+```powershell
+docker compose up -d --force-recreate api
+```
+
+```powershell
+docker compose exec api node dist/database/seeds/products/seed-products.js
+docker compose exec api node dist/database/seeds/orders/seed-orders.js
+```
+
+The API and Swagger UI are available at `http://localhost:3001/api` and
+`http://localhost:3001/api/docs`. View service status and logs with:
+
+```powershell
+docker compose ps
+docker compose logs -f api
+```
+
+Stop the services without deleting the persisted PostgreSQL and Redis volumes:
+
+```powershell
+docker compose down
+```
+
+The Compose credentials are for local development only. Replace them and use managed or
+secured PostgreSQL/Redis services for deployment. The `migrate` command uses the compiled
+TypeORM data source and does not require a `.env` file inside the image.
 
 ## Database Schema
 
@@ -287,9 +356,10 @@ planned for a later phase.
 | `created_at`   | `timestamptz`          | Event creation time                                     |
 
 Order creation writes this event in the same PostgreSQL transaction as the order, inventory
-decrement, and order items. This prevents a committed order from losing its processing request
-if Redis is unavailable. The outbox publisher and BullMQ queue are not implemented yet, so
-events remain unpublished for now.
+decrement, and order items. A publisher polls unpublished events, locks each batch with
+`SKIP LOCKED`, and sends only the `orderId` to BullMQ. It marks the event published after Redis
+accepts the job; Redis errors leave the event available for exponential-backoff retry. This
+keeps the processing request in PostgreSQL if Redis is temporarily unavailable.
 
 TypeORM also maintains a migration-history table to record which migrations have been applied.
 
@@ -394,6 +464,9 @@ liveness endpoint only; it does not check PostgreSQL or other dependencies.
 5. It stores each order item with purchase-time name, SKU, and unit-price snapshots.
 6. The transaction commits only when the order, all items, and all inventory updates succeed;
    any error rolls the entire operation back.
+7. The outbox publisher later sends `{ "orderId": "..." }` to BullMQ with a stable
+   `order-processing-<orderId>` job ID. Publishing happens after the database transaction and
+   retries if Redis is unavailable.
 
 Order listing applies the optional status filter and pagination. Order detail reads the item
 snapshots rather than reconstructing historical values from the current product record.
@@ -462,6 +535,7 @@ Configure these environment variables in the deployment environment:
 | Variable       | Purpose                                                                     |
 | -------------- | --------------------------------------------------------------------------- |
 | `DATABASE_URL` | PostgreSQL connection string; use the SSL settings required by the provider |
+| `REDIS_URL`    | Redis connection URL (`redis://` or TLS-enabled `rediss://`)                |
 | `PORT`         | Listening port assigned by the platform                                     |
 | `NODE_ENV`     | Set to `production`                                                         |
 | `API_URL`      | Public API base URL including `/api`, such as `https://api.example.com/api` |
@@ -475,23 +549,28 @@ migrations drop their corresponding tables.
 The production build is emitted to `dist/`; `npm run start:prod` loads `.env` and starts the
 compiled NestJS entry point. For a platform that injects environment variables without a
 `.env` file, use an appropriate start command such as `node dist/main.js` or adjust the script.
-The repository does not currently include a Dockerfile, hosting-provider configuration, or
-CI/CD deployment pipeline.
+The repository includes a Dockerfile and Compose setup for local API/PostgreSQL/Redis use, but
+does not include hosting-provider configuration or a CI/CD deployment pipeline.
 
 ## Background Worker Status
 
-There is currently no BullMQ/Redis integration, job producer, worker entry point, or worker
-deployment script. The HTTP API and order transactions are implemented, but asynchronous
-notifications, invoice generation, and reliable post-commit job delivery are not. A separate
-worker should not be deployed until those components and their retry/idempotency behavior exist.
+The API now connects to Redis and publishes transactional outbox records to the BullMQ
+`order-processing` queue. Job data contains only `orderId`, and the stable job ID is
+`order-processing-<orderId>`. BullMQ can suppress duplicate adds while a job with that ID still
+exists; if the job is removed, the same ID may be accepted again, so database idempotency is
+still required in the worker.
+
+A consumer/worker entry point is not implemented yet. Jobs will remain waiting in Redis until a
+worker is added. Order confirmation, notification-log creation, simulated failures, worker
+retry policy, exhausted-retry stock restoration, and `GET /orders/:id/jobs` are future phases.
 
 ## Known Limitations and Next Steps
 
 - No payment integration or order-confirmation endpoint is implemented. `CONFIRMED` is a
   supported persisted status and may be used by other workflows, but this API does not set it.
 - Client-request idempotency is not implemented for order creation.
-- BullMQ/Redis publishing and the worker are not integrated yet. Order creation now records
-  transactional outbox events, which will remain unpublished until the queue publisher is added.
+- The queue publisher is integrated, but no worker consumes its jobs yet. Database-level job
+  idempotency and worker retry/compensation behavior remain to be implemented.
 - Automated tests currently focus on selected order service and repository behavior; product
   endpoint tests, HTTP E2E tests, and tests against a real PostgreSQL instance are not included.
-- Deployment automation, containerization, and worker deployment configuration remain future work.
+- Deployment automation and worker deployment configuration remain future work; Compose currently targets local development.

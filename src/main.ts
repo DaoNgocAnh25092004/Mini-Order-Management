@@ -8,6 +8,9 @@ async function bootstrap() {
     // Tạo NestJS app từ module gốc.
     const app = await NestFactory.create(AppModule);
 
+    // Cho phép Nest gọi lifecycle hook để đóng queue/Redis khi process nhận SIGINT hoặc SIGTERM.
+    app.enableShutdownHooks();
+
     // Chuẩn hóa toàn bộ endpoint HTTP dưới /api để URL công khai có một tiền tố nhất quán.
     app.setGlobalPrefix('api');
 
