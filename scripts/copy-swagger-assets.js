@@ -1,16 +1,14 @@
-// Sao chép tài nguyên Swagger UI vào public để Vercel CDN phục vụ thay cho express.static.
-// Script chỉ đưa các file runtime cần thiết vào bản deploy, không copy source map hay tài liệu gói.
+// Đóng gói asset Swagger thành manifest để Vercel đưa chúng vào function Node.
+// Thư mục public không được triển khai thành static riêng trong Nest single-function.
 const fs = require('node:fs');
 const path = require('node:path');
 
 const swaggerAssetsDirectory = path.resolve(
     __dirname,
-    '../node_modules/swagger-ui-dist',
-);
-const publicSwaggerAssetsDirectory = path.resolve(
-    __dirname,
     '../public/swagger-ui-assets',
 );
+const apiOutputDirectory = path.resolve(__dirname, '../dist/bootstrap/api');
+const manifestPath = path.join(apiOutputDirectory, 'swagger-assets.json');
 const swaggerAssetFiles = [
     'favicon-16x16.png',
     'favicon-32x32.png',
@@ -18,22 +16,20 @@ const swaggerAssetFiles = [
     'oauth2-redirect.js',
     'swagger-ui-bundle.js',
     'swagger-ui-standalone-preset.js',
+    'swagger-ui.css',
 ];
 
-// Đặt asset ở ngoài /api để Vercel không chuyển request tĩnh vào Nest function.
-// CSS được giữ riêng vì dự án có theme tùy chỉnh và đã được quản lý trong Git.
-function copySwaggerAssets() {
-    fs.mkdirSync(publicSwaggerAssetsDirectory, { recursive: true });
+// Đưa nội dung base64 vào JSON mà main.js require tĩnh, để Vercel truy vết asset trong function.
+function writeSwaggerAssetManifest() {
+    const manifest = {};
 
     for (const fileName of swaggerAssetFiles) {
         const sourcePath = path.join(swaggerAssetsDirectory, fileName);
-        const destinationPath = path.join(
-            publicSwaggerAssetsDirectory,
-            fileName,
-        );
-
-        fs.copyFileSync(sourcePath, destinationPath);
+        manifest[fileName] = fs.readFileSync(sourcePath).toString('base64');
     }
+
+    fs.mkdirSync(apiOutputDirectory, { recursive: true });
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest));
 }
 
-copySwaggerAssets();
+writeSwaggerAssetManifest();
