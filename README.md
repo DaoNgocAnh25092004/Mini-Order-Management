@@ -483,21 +483,21 @@ Test này kiểm tra logic khóa/trừ kho với mock. Chưa có bài kiểm th�
 
 Đây là kiến trúc triển khai dự kiến; API và worker là hai tiến trình riêng nhưng phải dùng chung `DATABASE_URL` và `REDIS_URL`.
 
-- **API — Vercel:** chọn để đáp ứng yêu cầu deploy API của đề bài. Vercel hỗ trợ NestJS dưới dạng Function ([tài liệu NestJS trên Vercel](https://vercel.com/docs/frameworks/backend/nestjs)). Tuy nhiên, tài liệu Vercel nêu các entry point tự nhận diện như `src/main.ts` hoặc `src/app.ts`; entry point hiện tại là `src/bootstrap/api/main.ts`. Vì vậy, cần xử lý tương thích entry point trước khi coi API đã sẵn sàng deploy lên Vercel.
-- **Worker — Render Background Worker:** worker cần chạy liên tục để nhận job; Render hỗ trợ dịch vụ Background Worker và liệt kê BullMQ là framework cho Node.js ([tài liệu Render](https://render.com/docs/background-workers)).
+- **API — Vercel:** dùng để triển khai HTTP API theo yêu cầu đề bài. Vercel hỗ trợ NestJS dưới dạng Function ([tài liệu NestJS trên Vercel](https://vercel.com/docs/frameworks/backend/nestjs)). File `src/main.ts` là entry point để Vercel nhận diện ứng dụng và chuyển sang bootstrap API trong `src/bootstrap/api/main.ts`.
+- **Worker — Railway:** chạy worker thành service riêng để tiến trình luôn hoạt động, nhận và xử lý job BullMQ. Railway cho phép triển khai API và worker từ cùng repository với Start Command riêng cho mỗi service ([hướng dẫn worker trên Railway](https://docs.railway.com/guides/saas-backend)). Worker không cần public domain.
 - **PostgreSQL — Neon:** API và worker cùng kết nối một database qua `DATABASE_URL`.
-- **Redis — Upstash:** API đọc trạng thái job, worker publish/consume job và cả hai dùng chung `REDIS_URL`. Dùng Redis TCP URL `redis://` hoặc `rediss://` theo cấu hình ứng dụng, không dùng REST URL/token của Upstash.
+- **Redis — Upstash:** API đọc trạng thái job, worker publish/consume job và cả hai dùng chung `REDIS_URL`. Dùng URL Redis TCP; với database bật TLS, dùng dạng `rediss://default:<TOKEN>@<HOST>:6379`. Không dùng REST URL/token của Upstash.
 
-### Cấu hình worker trên Render
+### Cấu hình worker trên Railway
 
-Kết nối Background Worker với cùng GitHub repository và chọn:
+Tạo service mới từ cùng GitHub repository, đặt tên dễ nhận biết như `order-worker`, rồi cấu hình:
 
-| Cấu hình       | Giá trị                   |
-| -------------- | ------------------------- |
-| Build Command  | `npm ci && npm run build` |
-| Start Command  | `npm run start:worker`    |
-| `NODE_ENV`     | `production`              |
-| `DATABASE_URL` | Connection string từ Neon |
-| `REDIS_URL`    | Redis TCP URL từ Upstash  |
+| Cấu hình       | Giá trị                             |
+| -------------- | ----------------------------------- |
+| Builder        | Dockerfile ở thư mục gốc repository |
+| Start Command  | `npm run start:worker`              |
+| `NODE_ENV`     | `production`                        |
+| `DATABASE_URL` | Connection string từ Neon           |
+| `REDIS_URL`    | Redis TCP URL từ Upstash, dùng TLS  |
 
-API cũng cần `DATABASE_URL` và `REDIS_URL`; Vercel còn cần hoàn tất cấu hình entry point nêu trên. Không đưa connection string hoặc password vào GitHub/README.
+Repository có Dockerfile với lệnh mặc định khởi chạy API, nên phải đặt Start Command riêng cho service worker để ghi đè lệnh mặc định đó. Không tạo public domain cho worker vì worker không nhận HTTP request. API trên Vercel cũng cần `DATABASE_URL`, `REDIS_URL`, `NODE_ENV=production` và `API_URL` trỏ đến domain production kèm `/api`. Chạy migration trên Neon trước khi gửi request đầu tiên. Không đưa connection string hoặc password vào GitHub/README.
