@@ -481,23 +481,13 @@ Test này kiểm tra logic khóa/trừ kho với mock. Chưa có bài kiểm th�
 
 ## 5. Nền tảng triển khai
 
-Đây là kiến trúc triển khai dự kiến; API và worker là hai tiến trình riêng nhưng phải dùng chung `DATABASE_URL` và `REDIS_URL`.
+Kiến trúc tách API HTTP và worker nền thành hai tiến trình độc lập. Neon lưu dữ liệu nghiệp vụ và outbox; worker Railway đọc outbox, đưa công việc vào hàng đợi BullMQ trên Upstash rồi xử lý. API và worker cần được cấu hình để cùng truy cập các dịch vụ dùng chung.
 
-- **API — Vercel:** dùng để triển khai HTTP API theo yêu cầu đề bài. Vercel hỗ trợ NestJS dưới dạng Function ([tài liệu NestJS trên Vercel](https://vercel.com/docs/frameworks/backend/nestjs)). Vercel nhận `main.js` ở thư mục gốc; file này nạp `dist/bootstrap/api/main.js` sau khi `npm run build` đã biên dịch và `tsc-alias` đổi alias thành đường dẫn tương đối. `src/bootstrap/api/main.ts` là bootstrap API dùng bởi Nest CLI và Docker.
-- **Worker — Railway:** chạy worker thành service riêng để tiến trình luôn hoạt động, nhận và xử lý job BullMQ. Railway cho phép triển khai API và worker từ cùng repository với Start Command riêng cho mỗi service ([hướng dẫn worker trên Railway](https://docs.railway.com/guides/saas-backend)). Worker không cần public domain.
-- **PostgreSQL — Neon:** API và worker cùng kết nối một database qua `DATABASE_URL`.
-- **Redis — Upstash:** API đọc trạng thái job, worker publish/consume job và cả hai dùng chung `REDIS_URL`. Dùng URL Redis TCP; với database bật TLS, dùng dạng `rediss://default:<TOKEN>@<HOST>:6379`. Không dùng REST URL/token của Upstash.
+| Thành phần | Nền tảng | Vai trò | Lý do lựa chọn | Kết nối |
+| --- | --- | --- | --- | --- |
+| HTTP API | Vercel | Cung cấp các endpoint REST và tài liệu Swagger thông qua NestJS Function. Entrypoint `main.js` nạp ứng dụng đã biên dịch trong `dist/`. | Phù hợp với mô hình serverless cho API HTTP; xem [tài liệu NestJS trên Vercel](https://vercel.com/docs/frameworks/backend/nestjs). | Cần `DATABASE_URL` để truy cập dữ liệu và `REDIS_URL` để tra cứu trạng thái job. |
+| Worker nền | Railway | Chạy tiến trình NestJS liên tục; đọc outbox từ PostgreSQL, đưa công việc vào hàng đợi BullMQ và xử lý job. | Phù hợp với tác vụ nền cần hoạt động liên tục, độc lập với vòng đời request HTTP; xem [hướng dẫn triển khai worker trên Railway](https://docs.railway.com/guides/saas-backend). | Dùng cùng `DATABASE_URL` và `REDIS_URL` với API; cấu hình Start Command riêng, ví dụ `npm run start:worker`. Không cần public domain. |
+| Cơ sở dữ liệu | Neon PostgreSQL | Lưu sản phẩm, đơn hàng, tồn kho và sự kiện outbox để API và worker phối hợp xử lý. | Cung cấp PostgreSQL được quản lý, dùng chung được từ hai nền tảng triển khai. | Cấu hình cùng `DATABASE_URL` cho Vercel và Railway. |
+| Hàng đợi | Upstash Redis | BullMQ lưu và phân phối job; worker nhận job để xử lý, API đọc trạng thái job khi cần. | Cung cấp Redis được quản lý mà không cần tự vận hành máy chủ hàng đợi. | Cấu hình cùng `REDIS_URL` dạng Redis TCP. Nếu endpoint yêu cầu TLS, dùng scheme `rediss://`; không dùng REST URL hoặc REST token. |
 
-### Cấu hình worker trên Railway
-
-Tạo service mới từ cùng GitHub repository, đặt tên dễ nhận biết như `order-worker`, rồi cấu hình:
-
-| Cấu hình       | Giá trị                             |
-| -------------- | ----------------------------------- |
-| Builder        | Dockerfile ở thư mục gốc repository |
-| Start Command  | `npm run start:worker`              |
-| `NODE_ENV`     | `production`                        |
-| `DATABASE_URL` | Connection string từ Neon           |
-| `REDIS_URL`    | Redis TCP URL từ Upstash, dùng TLS  |
-
-Repository có Dockerfile với lệnh mặc định khởi chạy API, nên phải đặt Start Command riêng cho service worker để ghi đè lệnh mặc định đó. Không tạo public domain cho worker vì worker không nhận HTTP request. API trên Vercel cũng cần `DATABASE_URL`, `REDIS_URL`, `NODE_ENV=production` và `API_URL` trỏ đến domain production kèm `/api`. Chạy migration trên Neon trước khi gửi request đầu tiên. Không đưa connection string hoặc password vào GitHub/README.
+Các biến môi trường phải được khai báo riêng trong Vercel và Railway, nhưng trỏ tới cùng database Neon và cùng Redis database Upstash. Không commit giá trị bí mật vào repository.
