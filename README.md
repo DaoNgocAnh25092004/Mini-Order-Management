@@ -1,576 +1,481 @@
 <p align="center">
-  <img src="https://img.icons8.com/fluency/96/shopping-cart.png" width="88" alt="Mini Order Management shopping cart icon" />
+  <img src="https://img.icons8.com/fluency/96/shopping-cart.png" width="88" alt="Biểu tượng Mini Order Management" />
 </p>
 
 <h1 align="center">Mini Order Management</h1>
 
 <p align="center">
-  A NestJS REST API for product and order management, built with PostgreSQL and TypeORM.
-  It includes transactional inventory handling, soft deletion, database migrations,
-  seed scripts, request validation, and OpenAPI documentation.
+  API quản lý sản phẩm và đơn hàng bằng NestJS, PostgreSQL, TypeORM, BullMQ và Redis.
+  Hệ thống có xử lý đơn nền, quản lý tồn kho trong transaction và tự xử lý đơn quá hạn.
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Node.js-20-339933?logo=nodedotjs&logoColor=white" alt="Node.js 20" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" alt="TypeScript 5" />
   <img src="https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white" alt="NestJS 11" />
-  <img src="https://img.shields.io/badge/PostgreSQL-Database-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
-  <img src="https://img.shields.io/badge/TypeORM-ORM-FE0803?logo=typeorm&logoColor=white" alt="TypeORM" />
-  <img src="https://img.shields.io/badge/Swagger-OpenAPI-85EA2D?logo=swagger&logoColor=black" alt="Swagger OpenAPI" />
-  <img src="https://img.shields.io/badge/Jest-Tests-C21325?logo=jest&logoColor=white" alt="Jest" />
+  <img src="https://img.shields.io/badge/PostgreSQL-CSDL-4169E1?logo=postgresql&logoColor=white" alt="Cơ sở dữ liệu PostgreSQL" />
+  <img src="https://img.shields.io/badge/TypeORM-ORM-FE0803?logo=typeorm&logoColor=white" alt="TypeORM ORM" />
+  <img src="https://img.shields.io/badge/BullMQ-Hàng%20đợi-CB2B35" alt="BullMQ xử lý hàng đợi" />
+  <img src="https://img.shields.io/badge/Redis-Lưu%20queue-DC382D?logo=redis&logoColor=white" alt="Redis lưu hàng đợi" />
+  <img src="https://img.shields.io/badge/Swagger-Tài%20liệu%20API-85EA2D?logo=swagger&logoColor=black" alt="Tài liệu API Swagger" />
+  <img src="https://img.shields.io/badge/Jest-Kiểm%20thử-C21325?logo=jest&logoColor=white" alt="Kiểm thử Jest" />
 </p>
 
-## Table of Contents
+## Mục lục
 
-- [Overview](#overview)
-- [Implemented Features](#implemented-features)
-- [Technology Stack](#technology-stack)
-- [Architecture and Project Structure](#architecture-and-project-structure)
-- [Run Locally](#run-locally)
-- [Run with Docker Compose](#run-with-docker-compose)
-- [Database Schema](#database-schema)
-- [API Reference](#api-reference)
-- [Order Processing Flow](#order-processing-flow)
-- [Inventory Concurrency and Overselling](#inventory-concurrency-and-overselling)
-- [Tests](#tests)
-- [Deployment](#deployment)
-- [Background Worker Status](#background-worker-status)
-- [Known Limitations and Next Steps](#known-limitations-and-next-steps)
+1. [Cách chạy local](#1-cách-chạy-local)
+2. [Mô tả bảng dữ liệu](#2-mô-tả-bảng-dữ-liệu)
+3. [Luồng xử lý đơn hàng và job](#3-luồng-xử-lý-đơn-hàng-và-job)
+    - [3.1 Luồng nghiệp vụ](#31-luồng-nghiệp-vụ)
+    - [3.2 Idempotency: chống job chạy lặp](#32-idempotency-chống-job-chạy-lặp)
+    - [3.3 Kiểm tra xử lý thành công](#33-kiểm-tra-xử-lý-thành-công)
+    - [3.4 Kiểm tra retry, hết lượt và hoàn kho](#34-kiểm-tra-retry-hết-lượt-và-hoàn-kho)
+    - [3.5 Chạy unit test cho job](#35-chạy-unit-test-cho-job)
+    - [3.6 Kiểm tra scheduler tự hủy đơn quá hạn](#36-kiểm-tra-scheduler-tự-hủy-đơn-quá-hạn)
+4. [Cách chống bán vượt tồn kho](#4-cách-chống-bán-vượt-tồn-kho)
+5. [Nền tảng triển khai](#5-nền-tảng-triển-khai)
 
-## Overview
+## 1. Cách chạy local
 
-Mini Order Management is a backend project for managing products and customer orders.
-The API uses a feature-oriented NestJS structure with application contracts separating
-business use cases from TypeORM persistence adapters. PostgreSQL constraints provide
-additional data-integrity guarantees beyond request validation.
+### Yêu cầu
 
-The API listens on port `3001` by default and uses the `/api` global route prefix.
+- Node.js từ phiên bản 20.6 và npm.
+- Docker Desktop đang chạy để khởi động PostgreSQL và Redis.
+- Git để tải mã nguồn.
 
-## Implemented Features
+### Chạy ứng dụng trực tiếp bằng Node.js
 
-- Product CRUD: create, list, get by UUID, partially update, and soft-delete products.
-- Product listing with pagination, case-insensitive name search, and inclusive price filters.
-- DTO transformation and validation for request bodies, query parameters, and UUID path values.
-- SKU uniqueness enforced by PostgreSQL; duplicate SKU errors are returned as HTTP `409`.
-- Order creation in a database transaction, including inventory decrement and purchase-time
-  product and price snapshots.
-- Order listing with pagination and optional status filter, plus order detail with item snapshots.
-- Order cancellation for `PENDING` and `CONFIRMED` orders, with stock restoration in a transaction.
-- Row locking and conditional stock updates to prevent concurrent orders from overselling.
-- Transactional outbox publishing to a BullMQ `order-processing` queue using stable job IDs.
-- TypeORM migrations, product and order seed commands, a process liveness endpoint, and Swagger UI.
+Các lệnh dưới đây dùng PowerShell, chạy tại thư mục chứa `package.json`.
 
-## Technology Stack
-
-- Node.js 20.6 or later and TypeScript
-- NestJS 11
-- BullMQ with the NestJS BullMQ integration and Redis
-- PostgreSQL and TypeORM
-- `class-validator` and `class-transformer`
-- Swagger / OpenAPI
-- Jest for unit tests
-
-## Architecture and Project Structure
-
-```text
-src/
-├── app.module.ts
-├── main.ts                         # Bootstrap, /api prefix, validation, Swagger, startup URLs
-├── database/
-│   ├── config/                     # TypeORM application and CLI configuration
-│   ├── entities/                   # Product, order, item, notification, and outbox models
-│   ├── enums/                     # Persistence-related order status values
-│   ├── migrations/                # Explicit PostgreSQL schema changes
-│   └── seeds/
-│       ├── products/               # 100-product CSV and product seed command
-│       └── orders/                 # Order seed command using existing products
-└── modules/
-    ├── health/
-    │   └── presentation/controllers/
-    ├── products/
-    │   ├── application/            # Use cases, repository contracts, application errors
-    │   ├── infrastructure/         # TypeORM read/write adapters
-    │   └── presentation/           # HTTP controller and DTOs
-    └── orders/
-        ├── application/            # Use cases, repository contracts, application errors
-        ├── infrastructure/
-        │   ├── queue/
-        │   │   ├── config/          # Redis connection options and queue/job names
-        │   │   └── publishers/      # Outbox publisher and its unit tests
-        │   └── repositories/        # TypeORM read/write adapters
-        └── presentation/           # HTTP controller and DTOs
-```
-
-The presentation layer validates HTTP input and maps application errors to HTTP responses.
-Application services coordinate use cases through repository contracts. Infrastructure
-adapters own TypeORM queries, transactions, row locks, and persistence mapping.
-
-## Run Locally
-
-### Prerequisites
-
-- Node.js 20.6 or later and npm. The scripts use Node's `--env-file` option.
-- A reachable PostgreSQL database. A Neon connection string is supported when configured
-  with the SSL settings required by the provider.
-- A reachable Redis server, required by the outbox publisher and `order-processing` queue.
-
-The API publishes order-processing jobs, but a worker that consumes and processes them is not
-implemented yet.
-
-### Step 1: Clone the repository
+**Bước 1 — Tải mã nguồn và cài thư viện:**
 
 ```powershell
 git clone https://github.com/DaoNgocAnh25092004/Mini-Order-Management.git
-```
-
-### Step 2: Open the project directory
-
-```powershell
 cd Mini-Order-Management
-```
-
-### Step 3: Install dependencies
-
-```powershell
 npm ci
 ```
 
-### Step 4: Create your local environment file
+`npm ci` cài đúng phiên bản đã khóa trong `package-lock.json`, giúp môi trường local khớp với môi trường build.
+
+**Bước 2 — Tạo file cấu hình môi trường:**
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-### Step 5: Configure PostgreSQL, Redis, and the local API URL
-
-Open `.env` and replace the database placeholder with your PostgreSQL connection string.
-Keep the local API settings as shown, or change them if you need a different port:
+Mở `.env` và đặt các giá trị cho PostgreSQL, Redis và API local:
 
 ```dotenv
-DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=verify-full
+DATABASE_URL=postgresql://mini_order:mini_order_dev@localhost:5432/mini_order_management
 REDIS_URL=redis://localhost:6379
 PORT=3001
 NODE_ENV=development
 API_URL=http://localhost:3001/api
 ```
 
-`API_URL` is the externally usable API base URL and should include `/api`. If it is not
-provided, startup output is derived from the address NestJS is listening on. URL-encode
-special characters in database credentials when required by the connection string. Use
-`rediss://` for Redis connections that require TLS. `REDIS_URL` supports a Redis database
-number and optional username/password.
+`DATABASE_URL` và `REDIS_URL` phải trỏ đến dịch vụ đang chạy. Không dùng mật khẩu mẫu này trong môi trường thật.
 
-### Step 6: Create the database schema
+**Bước 3 — Khởi động PostgreSQL và Redis:**
 
-Run the migrations after confirming that `DATABASE_URL` points to the database you intend
-to use:
+```powershell
+docker compose up -d postgres redis
+```
+
+`-d` chạy các dịch vụ ở nền. Khi chạy API bằng Node.js trên máy host, dùng `localhost` như cấu hình `.env`; bên trong Docker Compose, các container dùng hostname `postgres` và `redis`.
+
+**Bước 4 — Tạo/cập nhật cấu trúc database:**
 
 ```powershell
 npm run migration
 ```
 
-### Step 7: Seed the sample products
+Lệnh này chạy TypeORM migrations để tạo bảng và constraint; dự án không tự đồng bộ schema khi khởi động.
 
-This imports up to 100 products from the CSV. Existing SKUs are skipped and their records
-are not overwritten.
+**Bước 5 — Nạp dữ liệu mẫu:**
 
 ```powershell
 npm run seed:products
-```
-
-### Step 8: (Optional) Seed sample orders
-
-Run this only after the products are seeded and when you want sample order data. It creates
-up to 10 orders using active products from your database and decrements their stock. Existing
-seed orders are skipped when you run the command again.
-
-```powershell
 npm run seed:orders
 ```
 
-### Step 9: Start the API
+Lệnh sản phẩm nạp tối đa 100 sản phẩm từ CSV. Lệnh đơn hàng là tùy chọn, tạo tối đa 10 đơn và trừ tồn kho tương ứng; chỉ chạy sau khi đã nạp sản phẩm.
+
+**Bước 6 — Chạy API và worker:**
 
 ```powershell
 npm run dev
 ```
 
-The development command starts NestJS in watch mode. With the example environment, the API
-uses port `3001` and these URLs:
+Chế độ watch tự khởi động lại khi mã nguồn thay đổi. API, outbox publisher, BullMQ worker và lịch quét đơn hết hạn hiện chạy chung trong tiến trình NestJS.
 
-- API base: `http://localhost:3001/api`
-- Swagger UI: `http://localhost:3001/api/docs`
-- Health: `http://localhost:3001/api/health`
-- Products: `http://localhost:3001/api/products`
-- Orders: `http://localhost:3001/api/orders`
+- API: `http://localhost:3001/api`
+- Swagger: `http://localhost:3001/api/docs`
+- Kiểm tra API: `http://localhost:3001/api/health`
 
-### Step 10: Verify the API
+### Chạy toàn bộ bằng Docker Compose
 
-Open Swagger to try the endpoints, or request the health endpoint to confirm that the API
-process is responding:
-
-```powershell
-Invoke-RestMethod http://localhost:3001/api/health
-```
-
-To run the automated tests separately:
-
-```powershell
-npm test -- --runInBand
-```
-
-## Run with Docker Compose
-
-`Dockerfile` builds a production image in separate build and runtime stages. `docker-compose.yml`
-provides the API, PostgreSQL, and Redis for a local environment. The API image runs as the
-unprivileged `node` user; the PostgreSQL and Redis ports bind to localhost only.
-
-From the repository root, build the API image and start the local dependencies:
+Nếu muốn API, PostgreSQL và Redis đều chạy trong Docker, thực hiện lần lượt:
 
 ```powershell
 docker compose build api
 docker compose up -d postgres redis
-```
-
-Run migrations as an explicit one-off operation, then start the API:
-
-```powershell
 docker compose --profile tools run --rm migrate
 docker compose up -d api
 ```
 
-### Seed sample data with Docker (optional)
+- `build api`: tạo image ứng dụng mà cả API và tác vụ migration dùng chung.
+- `up -d postgres redis`: khởi động database và Redis trước.
+- `--profile tools run --rm migrate`: chạy migration một lần rồi xóa container tác vụ.
+- `up -d api`: chạy API cùng worker; Compose chờ PostgreSQL và Redis khỏe mạnh trước khi khởi động.
 
-After the API is running and migrations have completed, run these commands from the
-repository root. The first imports products from the CSV; the second creates up to 10
-sample orders using those real products and reduces their stock accordingly. Existing
-product SKUs and seed orders are skipped if you run the commands again.
-
-If the API container was created before the CSV mount was added, recreate it once so the
-mount becomes available:
-
-```powershell
-docker compose up -d --force-recreate api
-```
+Nạp dữ liệu mẫu sau khi API đã chạy:
 
 ```powershell
 docker compose exec api node dist/database/seeds/products/seed-products.js
 docker compose exec api node dist/database/seeds/orders/seed-orders.js
 ```
 
-The API and Swagger UI are available at `http://localhost:3001/api` and
-`http://localhost:3001/api/docs`. View service status and logs with:
+Lệnh `exec` chạy seed bên trong container API. File CSV sản phẩm được mount từ thư mục mã nguồn vào container để script đọc được.
+
+Kiểm tra trạng thái và log:
 
 ```powershell
 docker compose ps
 docker compose logs -f api
 ```
 
-Stop the services without deleting the persisted PostgreSQL and Redis volumes:
+`logs -f api` đặc biệt hữu ích để xem publisher, worker và scheduler hoạt động. Dừng container nhưng giữ dữ liệu database/Redis bằng:
 
 ```powershell
 docker compose down
 ```
 
-The Compose credentials are for local development only. Replace them and use managed or
-secured PostgreSQL/Redis services for deployment. The `migrate` command uses the compiled
-TypeORM data source and does not require a `.env` file inside the image.
+### Chạy kiểm thử
 
-## Database Schema
-
-Schema changes are managed by TypeORM migrations; `synchronize` is disabled. UUID primary
-keys are generated by PostgreSQL. Prices use `numeric(12, 2)` and are represented as strings
-in TypeScript so decimal values are not converted to binary floating-point numbers.
-
-### `products`
-
-| Column       | Type                   | Purpose and constraints                 |
-| ------------ | ---------------------- | --------------------------------------- |
-| `id`         | `uuid`                 | Primary key                             |
-| `sku`        | `varchar(64)`          | Required, non-blank, unique             |
-| `name`       | `varchar(200)`         | Required and non-blank                  |
-| `price`      | `numeric(12, 2)`       | Required and non-negative               |
-| `stock`      | `integer`              | Required and non-negative               |
-| `created_at` | `timestamptz`          | Creation timestamp                      |
-| `updated_at` | `timestamptz`          | Last-update timestamp                   |
-| `deleted_at` | nullable `timestamptz` | Soft-delete marker; `NULL` means active |
-
-Soft-deleted products are omitted from normal product reads and cannot be used to create an
-order. The SKU unique index applies to all rows, including soft-deleted products, so a deleted
-product's SKU cannot currently be reused.
-
-### `orders`
-
-| Column           | Type           | Purpose and constraints                                   |
-| ---------------- | -------------- | --------------------------------------------------------- |
-| `id`             | `uuid`         | Primary key                                               |
-| `customer_name`  | `varchar(200)` | Required and non-blank                                    |
-| `customer_email` | `varchar(254)` | Required                                                  |
-| `status`         | `varchar(20)`  | Defaults to `PENDING`; checked against supported statuses |
-| `created_at`     | `timestamptz`  | Creation timestamp; indexed for order listing             |
-| `updated_at`     | `timestamptz`  | Last-update timestamp                                     |
-
-Supported statuses are `PENDING`, `CONFIRMED`, `CANCELLED`, and `FAILED`. A composite index
-on `(status, created_at)` supports status-filtered order listing.
-
-### `order_items`
-
-| Column         | Type             | Purpose and constraints                                       |
-| -------------- | ---------------- | ------------------------------------------------------------- |
-| `id`           | `uuid`           | Primary key                                                   |
-| `order_id`     | `uuid`           | Required foreign key to `orders`; cascades on hard delete     |
-| `product_id`   | `uuid`           | Required foreign key to `products`; hard delete is restricted |
-| `product_sku`  | `varchar(64)`    | SKU snapshot at purchase time                                 |
-| `product_name` | `varchar(200)`   | Product name snapshot at purchase time                        |
-| `quantity`     | `integer`        | Must be greater than zero                                     |
-| `unit_price`   | `numeric(12, 2)` | Non-negative purchase-time price snapshot                     |
-
-Indexes are defined for `order_items.order_id` and `order_items.product_id`. Products are
-soft-deleted rather than hard-deleted, so existing order-item references and purchase history
-remain intact.
-
-### `notification_logs`
-
-| Column       | Type          | Purpose and constraints                    |
-| ------------ | ------------- | ------------------------------------------ |
-| `id`         | `uuid`        | Primary key                                |
-| `order_id`   | `uuid`        | Required foreign key to `orders`           |
-| `event_type` | `varchar(64)` | Notification event name                    |
-| `payload`    | `jsonb`       | Event details; defaults to an empty object |
-| `created_at` | `timestamptz` | Log creation time                          |
-
-A unique index on `(order_id, event_type)` is the database-level guard against recording the
-same notification event more than once. The worker that writes confirmation notifications is
-planned for a later phase.
-
-### `outbox_events`
-
-| Column         | Type                   | Purpose and constraints                                 |
-| -------------- | ---------------------- | ------------------------------------------------------- |
-| `id`           | `uuid`                 | Primary key                                             |
-| `order_id`     | `uuid`                 | Required foreign key to `orders`                        |
-| `event_type`   | `varchar(64)`          | Currently `ORDER_PROCESSING_REQUESTED`                  |
-| `dedupe_key`   | `varchar(160)`         | Unique key used to prevent duplicate dispatch           |
-| `payload`      | `jsonb`                | Minimal event payload containing the order ID           |
-| `attempts`     | `integer`              | Non-negative publisher-attempt counter; defaults to `0` |
-| `available_at` | `timestamptz`          | Earliest time the publisher may retry the event         |
-| `published_at` | nullable `timestamptz` | `NULL` until the event is sent to the queue             |
-| `last_error`   | nullable `text`        | Most recent publisher error                             |
-| `created_at`   | `timestamptz`          | Event creation time                                     |
-
-Order creation writes this event in the same PostgreSQL transaction as the order, inventory
-decrement, and order items. A publisher polls unpublished events, locks each batch with
-`SKIP LOCKED`, and sends only the `orderId` to BullMQ. It marks the event published after Redis
-accepts the job; Redis errors leave the event available for exponential-backoff retry. This
-keeps the processing request in PostgreSQL if Redis is temporarily unavailable.
-
-TypeORM also maintains a migration-history table to record which migrations have been applied.
-
-## API Reference
-
-All routes are under `/api`. Swagger provides the interactive contract at `/api/docs`.
-
-### Products
-
-| Method and route           | Purpose                    | Success response |
-| -------------------------- | -------------------------- | ---------------- |
-| `POST /api/products`       | Create a product           | `201 Created`    |
-| `GET /api/products`        | List and filter products   | `200 OK`         |
-| `GET /api/products/:id`    | Get one product by UUID    | `200 OK`         |
-| `PATCH /api/products/:id`  | Partially update a product | `200 OK`         |
-| `DELETE /api/products/:id` | Soft-delete a product      | `204 No Content` |
-
-`GET /api/products` supports:
-
-| Query parameter | Behavior and validation                                                                       |
-| --------------- | --------------------------------------------------------------------------------------------- |
-| `page`          | 1-based integer; defaults to `1`, maximum `1,000,000`                                         |
-| `limit`         | Integer from `1` to `100`; defaults to `10`                                                   |
-| `search`        | Optional, case-insensitive substring match on product name; maximum 200 characters            |
-| `minPrice`      | Optional inclusive lower bound; non-negative, up to 2 decimal places                          |
-| `maxPrice`      | Optional inclusive upper bound; non-negative, up to 2 decimal places and not below `minPrice` |
-
-The paginated response contains `items`, `page`, `limit`, `total`, and `totalPages`. Invalid
-input or UUIDs return `400`; missing or soft-deleted products return `404`; duplicate SKUs
-return `409`.
-
-Example:
-
-```http
-GET /api/products?page=1&limit=10&search=keyboard&minPrice=100&maxPrice=500
-```
-
-Product creation body:
-
-```json
-{
-    "sku": "SKU-1001",
-    "name": "Wireless Keyboard",
-    "price": "499.99",
-    "stock": 25
-}
-```
-
-### Orders
-
-| Method and route               | Purpose                                                | Success response |
-| ------------------------------ | ------------------------------------------------------ | ---------------- |
-| `POST /api/orders`             | Create an order and decrement inventory                | `201 Created`    |
-| `GET /api/orders`              | List orders with pagination and optional status filter | `200 OK`         |
-| `GET /api/orders/:id`          | Get order details and item snapshots by UUID           | `200 OK`         |
-| `PATCH /api/orders/:id/cancel` | Cancel an eligible order and restore inventory         | `200 OK`         |
-
-`POST /api/orders` accepts `customerName`, `customerEmail`, and `items`. The request must
-contain 1–100 items; each `productId` must be a UUID and each `quantity` must be a positive
-integer within the PostgreSQL `integer` range. Repeated product IDs are combined before the
-repository creates the order.
-
-```json
-{
-    "customerName": "Nguyen Van An",
-    "customerEmail": "customer@example.com",
-    "items": [
-        {
-            "productId": "124f6fd1-9de3-4ad7-9408-729fccfe0fa0",
-            "quantity": 2
-        }
-    ]
-}
-```
-
-Order creation returns `400` for invalid input, `404` if a requested product is missing or
-soft-deleted, and `409` when available stock is insufficient. The order is created as
-`PENDING`; each item stores the product name, SKU, and price used when the order was placed.
-
-`GET /api/orders` supports `page` (default `1`, maximum `1,000,000`), `limit` (default `10`,
-maximum `100`), and optional `status` (`PENDING`, `CONFIRMED`, or `CANCELLED`). List results
-are summaries; `GET /api/orders/:id` returns the associated item snapshots.
-
-Cancellation is allowed only while an order is `PENDING` or `CONFIRMED`. Successful
-cancellation restores inventory and changes the status to `CANCELLED`. Invalid UUIDs return
-`400`, unknown orders return `404`, and an order in a non-cancellable status returns `409`.
-
-### Health
-
-`GET /api/health` returns `status`, an ISO timestamp, and `uptimeSeconds`. This is a process
-liveness endpoint only; it does not check PostgreSQL or other dependencies.
-
-## Order Processing Flow
-
-1. The controller validates the request DTO, including nested item fields.
-2. `CreateOrderService` merges repeated product IDs and rejects a merged quantity that would
-   exceed PostgreSQL's `integer` limit.
-3. The write repository starts a database transaction and locks active product rows in a
-   deterministic ID order.
-4. It verifies that every product exists and has enough stock, creates the `PENDING` order,
-   and conditionally decrements stock.
-5. It stores each order item with purchase-time name, SKU, and unit-price snapshots.
-6. The transaction commits only when the order, all items, and all inventory updates succeed;
-   any error rolls the entire operation back.
-7. The outbox publisher later sends `{ "orderId": "..." }` to BullMQ with a stable
-   `order-processing-<orderId>` job ID. Publishing happens after the database transaction and
-   retries if Redis is unavailable.
-
-Order listing applies the optional status filter and pagination. Order detail reads the item
-snapshots rather than reconstructing historical values from the current product record.
-
-Cancellation locks the order row, verifies its status, restores each item's quantity in a
-stable product order, and then saves `CANCELLED`. If any inventory restoration or save fails,
-the transaction rolls back. A concurrent second cancellation waits for the first transaction
-and then sees the updated status, preventing a second stock restoration.
-
-## Inventory Concurrency and Overselling
-
-The order-creation transaction uses two safeguards:
-
-1. **Pessimistic row lock:** product rows are selected with `FOR UPDATE` semantics and ordered
-   by product ID. A competing transaction for the same product waits for the lock, then
-   evaluates the committed stock value.
-2. **Conditional decrement:** each inventory update includes `stock >= requested quantity`.
-   If exactly one row is not updated, the repository raises an application error and the
-   transaction rolls back.
-
-For example, if one unit remains and two customers attempt to buy it concurrently, one
-transaction can decrement stock and commit. The waiting transaction then observes insufficient
-stock and fails with `409 Conflict`; it cannot create a partial order or make stock negative.
-Sorting product IDs consistently also reduces deadlocks when orders contain multiple products.
-
-This protects inventory from concurrent overselling, but the API does not yet accept an
-idempotency key. A client retry after an uncertain response is not guaranteed to reuse the
-original order.
-
-## Tests
-
-Run the test suite with:
-
-```bash
+```powershell
 npm test -- --runInBand
 ```
 
-Run one test file by name:
+Lệnh chạy toàn bộ Jest test tuần tự. Các test đơn vị dùng mock; chúng kiểm tra logic nhưng không thay thế kiểm thử với PostgreSQL thật khi có nhiều request đồng thời.
 
-```bash
-npx jest --runInBand create-order.service.spec.ts
+## 2. Mô tả bảng dữ liệu
+
+Schema được tạo bằng TypeORM migrations. Khóa chính dùng UUID; giá tiền dùng `numeric(12, 2)` và được giữ dạng chuỗi trong TypeScript để tránh sai số số thực.
+
+### `products` — sản phẩm và tồn kho
+
+| Cột                        | Ý nghĩa                                                   |
+| -------------------------- | --------------------------------------------------------- |
+| `id`                       | UUID định danh sản phẩm.                                  |
+| `sku`                      | Mã sản phẩm duy nhất, bắt buộc và không được để trống.    |
+| `name`                     | Tên sản phẩm.                                             |
+| `price`                    | Giá hiện tại, không âm.                                   |
+| `stock`                    | Tồn kho hiện tại, PostgreSQL không cho phép nhỏ hơn 0.    |
+| `created_at`, `updated_at` | Thời điểm tạo và cập nhật.                                |
+| `deleted_at`               | Đánh dấu xóa mềm; `NULL` nghĩa là sản phẩm còn hoạt động. |
+
+Sản phẩm xóa mềm không xuất hiện trong truy vấn thông thường và không thể dùng để tạo đơn. SKU vẫn duy nhất kể cả với sản phẩm đã xóa mềm, nên SKU cũ hiện chưa thể dùng lại.
+
+### `orders` — thông tin đơn hàng
+
+| Cột                               | Ý nghĩa                                                        |
+| --------------------------------- | -------------------------------------------------------------- |
+| `id`                              | UUID định danh đơn.                                            |
+| `customer_name`, `customer_email` | Thông tin khách hàng tại lúc đặt.                              |
+| `status`                          | Trạng thái: `PENDING`, `CONFIRMED`, `CANCELLED` hoặc `FAILED`. |
+| `created_at`, `updated_at`        | Thời điểm tạo và cập nhật; có index hỗ trợ lọc/truy vấn đơn.   |
+
+### `order_items` — các dòng hàng và ảnh chụp lúc mua
+
+| Cột                           | Ý nghĩa                                       |
+| ----------------------------- | --------------------------------------------- |
+| `id`                          | UUID định danh dòng hàng.                     |
+| `order_id`                    | Đơn sở hữu dòng hàng; tham chiếu `orders`.    |
+| `product_id`                  | Sản phẩm được mua; tham chiếu `products`.     |
+| `product_sku`, `product_name` | SKU và tên được chụp lại lúc mua.             |
+| `quantity`                    | Số lượng, phải lớn hơn 0.                     |
+| `unit_price`                  | Giá mỗi sản phẩm tại thời điểm mua, không âm. |
+
+Snapshot giữ nguyên lịch sử đơn ngay cả khi tên, SKU hoặc giá sản phẩm hiện tại thay đổi.
+
+### `notification_logs` — nhật ký sự kiện đơn hàng
+
+| Cột          | Ý nghĩa                                                                     |
+| ------------ | --------------------------------------------------------------------------- |
+| `id`         | UUID định danh log.                                                         |
+| `order_id`   | Đơn phát sinh sự kiện.                                                      |
+| `event_type` | Loại sự kiện hiện dùng: `ORDER_CONFIRMED`, `ORDER_FAILED`, `ORDER_EXPIRED`. |
+| `payload`    | Chi tiết sự kiện dạng JSON, có thể chứa trạng thái hoặc lý do lỗi.          |
+| `created_at` | Thời điểm ghi nhận.                                                         |
+
+Unique index `(order_id, event_type)` ngăn ghi lặp cùng một loại sự kiện cho cùng đơn. Đây là log thay cho email; ứng dụng chưa gửi email thật.
+
+### `outbox_events` — yêu cầu chuyển từ database sang queue
+
+| Cột                        | Ý nghĩa                                                  |
+| -------------------------- | -------------------------------------------------------- |
+| `id`                       | UUID định danh event outbox.                             |
+| `order_id`                 | Đơn cần xử lý nền.                                       |
+| `event_type`               | Hiện là `ORDER_PROCESSING_REQUESTED`.                    |
+| `dedupe_key`               | Khóa duy nhất để tránh tạo yêu cầu dispatch trùng.       |
+| `payload`                  | Dữ liệu tối thiểu, chỉ cần `orderId`.                    |
+| `attempts`, `available_at` | Số lần publisher thử và thời điểm được phép thử tiếp.    |
+| `published_at`             | Thời điểm gửi thành công vào Redis; `NULL` nếu chưa gửi. |
+| `last_error`               | Lỗi gửi gần nhất, nếu có.                                |
+| `created_at`               | Thời điểm tạo event.                                     |
+
+Đơn, tồn kho, order items và outbox event được lưu trong cùng transaction. Nếu Redis tạm lỗi, event vẫn ở PostgreSQL để publisher thử gửi lại, tránh mất yêu cầu xử lý.
+
+## 3. Luồng xử lý đơn hàng và job
+
+### 3.1 Luồng nghiệp vụ
+
+1. API kiểm tra dữ liệu đầu vào. `CreateOrderService` gộp các dòng có cùng `productId` và từ chối tổng số lượng vượt giới hạn kiểu `integer` của PostgreSQL.
+2. Repository mở transaction, khóa các dòng sản phẩm còn hoạt động theo thứ tự ID cố định, kiểm tra sản phẩm và số lượng tồn.
+3. Nếu đủ hàng, hệ thống tạo đơn `PENDING`, lưu snapshot vào `order_items`, trừ tồn kho và ghi event outbox. Các thay đổi cùng commit; lỗi ở bất kỳ bước nào thì rollback toàn bộ.
+4. Outbox publisher quét event chưa gửi và thêm job vào queue BullMQ `order-processing`. Job tên `process-order`, payload chỉ gồm `{ orderId }`, ID ổn định là `order-processing-<orderId>`.
+5. Worker chờ giả lập 3–5 giây. Mỗi lần xử lý có xác suất lỗi khoảng 30% để kiểm tra retry.
+6. Nếu thành công, repository khóa đơn và chỉ chuyển `PENDING` thành `CONFIRMED`; trạng thái và log `ORDER_CONFIRMED` được ghi cùng transaction.
+7. Nếu lỗi trước lần cuối, processor ném lỗi lại để BullMQ retry. Tối đa 3 lần chạy tổng cộng, với exponential backoff từ khoảng 1 giây.
+8. Nếu cả 3 lần đều lỗi, repository chỉ xử lý khi đơn vẫn `PENDING`: hoàn đúng số lượng từ `order_items`, đổi trạng thái thành `FAILED` và ghi `ORDER_FAILED` cùng lý do lỗi trong transaction. Job sau đó có trạng thái `failed`.
+9. `GET /api/orders/:id/jobs` đọc trạng thái job trong Redis và trả `orderId`, `jobId`, `state`, `attempts`, `maxAttempts`, `failureReason`. Nếu job chưa được publisher đưa vào Redis hoặc không còn trong queue thì endpoint trả `404`.
+10. Scheduler dùng repeatable job chạy mỗi 5 phút. Mỗi lượt tìm tối đa 100 đơn `PENDING` đã tạo quá 30 phút, hoàn kho, đổi thành `CANCELLED` và ghi `ORDER_EXPIRED` trong transaction.
+
+**Lưu ý tồn kho:** tồn kho đã bị trừ khi tạo đơn. Worker xác nhận không trừ lần nữa; chỉ luồng thất bại cuối cùng hoặc hết hạn mới cộng trả kho.
+
+### 3.2 Idempotency: chống job chạy lặp
+
+**Yêu cầu idempotency của job đã được triển khai ở tầng database.** Nếu BullMQ retry hoặc cùng job được gửi lại, logic dựa trên trạng thái đơn và transaction để không xử lý tác động nghiệp vụ lần thứ hai:
+
+- **Xác nhận đơn:** `confirmPendingOrder()` khóa dòng order và chỉ chuyển `PENDING` sang `CONFIRMED`. Nếu job chạy lại sau khi đã xác nhận, trạng thái không còn `PENDING` nên hàm dừng, không cập nhật đơn hay ghi log xác nhận lần nữa.
+- **Job hết lượt và hoàn kho:** `failPendingOrder()` khóa order và chỉ hoàn kho khi trạng thái còn `PENDING`. Sau khi cộng lại số lượng trong `order_items`, nó đổi trạng thái sang `FAILED` và ghi log trong cùng transaction. Job lặp sau đó gặp `FAILED`, nên không cộng kho lần hai.
+- **Đơn quá hạn:** scheduler chỉ lấy các order còn `PENDING` và khóa chúng. Lượt quét tiếp theo không chọn lại order đã đổi thành `CANCELLED`, nên không hoàn kho lần nữa.
+- **Thông báo:** unique index `(order_id, event_type)` kết hợp `orIgnore()` chặn log trùng cho cùng loại sự kiện của một order.
+- **Trừ tồn kho:** chỉ transaction tạo order gọi logic trừ kho. Worker xác nhận không trừ lại; retry job không quay lại transaction tạo đơn.
+
+Job ID ổn định `order-processing-<orderId>` giúp BullMQ chặn enqueue trùng khi job cùng ID còn tồn tại trong Redis. Tuy nhiên đây không phải lớp đảm bảo duy nhất vì job có thể được thêm lại sau khi bị xóa; các kiểm tra trạng thái/transaction trong database mới bảo vệ tác động nghiệp vụ.
+
+Điều này **khác** idempotency của HTTP request: API chưa hỗ trợ `Idempotency-Key` cho `POST /api/orders`. Nếu client gửi lại request tạo đơn sau timeout, hệ thống có thể tạo order mới và trừ kho thêm lần nữa nếu tồn kho còn đủ. Việc chống job chạy lặp đã có; việc gộp request tạo đơn bị gửi lặp thì chưa có.
+
+### 3.3 Kiểm tra xử lý thành công
+
+Các bước sau tạo một đơn thật trong database và làm thay đổi tồn kho. Chỉ chạy trên môi trường local; không dùng database production. Mở một cửa sổ PowerShell tại thư mục dự án và giữ cửa sổ đó mở để dùng lại biến `$orderId` ở các bước sau.
+
+**Bước 1 — Tìm sản phẩm còn hàng:**
+
+```powershell
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT id, sku, stock FROM products WHERE deleted_at IS NULL AND stock > 0 ORDER BY sku LIMIT 10;"
 ```
 
-Current Jest tests cover order-creation service behavior (valid creation, insufficient-stock
-error propagation, duplicate-item merging, integer overflow, and unexpected repository
-errors), order cancellation repository behavior (eligible statuses, duplicate cancellation,
-missing orders, and inventory-restoration failure), order-list query behavior, and order-detail
-service behavior.
+Chọn một dòng và ghi lại `id`, `sku`, `stock`. `stock` là mốc để lát nữa xác nhận đơn chỉ trừ kho một lần.
 
-These are unit tests using mocks; they do not start PostgreSQL or prove real database lock
-behavior under concurrent HTTP requests. No HTTP E2E or real-PostgreSQL concurrency test is
-currently included.
+**Bước 2 — Chuẩn bị request tạo đơn:**
 
-## Deployment
+```powershell
+$baseUrl = 'http://localhost:3001/api'
+$productId = 'PASTE-PRODUCT-UUID-HERE'
+$body = @{
+    customerName = 'Queue Test'
+    customerEmail = "queue-test-$([guid]::NewGuid())@example.com"
+    items = @(@{ productId = $productId; quantity = 1 })
+} | ConvertTo-Json -Depth 5
 
-Build and run the API with:
+$order = Invoke-RestMethod -Method Post `
+    -Uri "$baseUrl/orders" `
+    -ContentType 'application/json' `
+    -Body $body
 
-```bash
-npm ci
-npm run build
-npm run start:prod
+$orderId = $order.id
+$order | Format-List id, status, createdAt
 ```
 
-Configure these environment variables in the deployment environment:
+Thay placeholder bằng ID sản phẩm đã chọn. Lệnh gửi một đơn có một sản phẩm, số lượng 1; email ngẫu nhiên tránh trùng dữ liệu thử. Lưu ID đơn do response trả về.
 
-| Variable       | Purpose                                                                     |
-| -------------- | --------------------------------------------------------------------------- |
-| `DATABASE_URL` | PostgreSQL connection string; use the SSL settings required by the provider |
-| `REDIS_URL`    | Redis connection URL (`redis://` or TLS-enabled `rediss://`)                |
-| `PORT`         | Listening port assigned by the platform                                     |
-| `NODE_ENV`     | Set to `production`                                                         |
-| `API_URL`      | Public API base URL including `/api`, such as `https://api.example.com/api` |
+**Bước 3 — Xem job trong BullMQ:**
 
-Apply migrations as a release step before sending traffic. The current `npm run migration`
-script explicitly loads `.env`; platforms that only inject environment variables must provide
-that file for the migration command or adapt the script to use the platform environment.
-Do not run `npm run migration:revert` as a routine deployment action: the current `down`
-migrations drop their corresponding tables.
+```powershell
+Invoke-RestMethod -Method Get -Uri "$baseUrl/orders/$orderId/jobs" |
+    Format-List orderId, jobId, state, attempts, maxAttempts, failureReason
+```
 
-The production build is emitted to `dist/`; `npm run start:prod` loads `.env` and starts the
-compiled NestJS entry point. For a platform that injects environment variables without a
-`.env` file, use an appropriate start command such as `node dist/main.js` or adjust the script.
-The repository includes a Dockerfile and Compose setup for local API/PostgreSQL/Redis use, but
-does not include hosting-provider configuration or a CI/CD deployment pipeline.
+Nếu nhận `404`, chờ khoảng một giây rồi chạy lại lệnh: publisher quét outbox theo chu kỳ nên job có thể chưa được đưa vào Redis. Các trạng thái `waiting`, `active` hoặc `delayed` là trung gian, không phải lỗi cuối.
 
-## Background Worker Status
+**Bước 4 — Đợi job kết thúc:**
 
-The API now connects to Redis and publishes transactional outbox records to the BullMQ
-`order-processing` queue. Job data contains only `orderId`, and the stable job ID is
-`order-processing-<orderId>`. BullMQ can suppress duplicate adds while a job with that ID still
-exists; if the job is removed, the same ID may be accepted again, so database idempotency is
-still required in the worker.
+Chạy lại lệnh GET ở bước 3 sau vài giây. Khi xử lý thành công, `state` là `completed`, `attempts` thường bằng `1`, và order chuyển từ `PENDING` sang `CONFIRMED`. Request tạo đơn trả `PENDING` trước vì HTTP không chờ worker xử lý xong.
 
-A consumer/worker entry point is not implemented yet. Jobs will remain waiting in Redis until a
-worker is added. Order confirmation, notification-log creation, simulated failures, worker
-retry policy, exhausted-retry stock restoration, and `GET /orders/:id/jobs` are future phases.
+**Bước 5 — Đối chiếu dữ liệu đã lưu:**
 
-## Known Limitations and Next Steps
+Thay placeholder bằng order ID ở bước 2 và product ID ở bước 1:
 
-- No payment integration or order-confirmation endpoint is implemented. `CONFIRMED` is a
-  supported persisted status and may be used by other workflows, but this API does not set it.
-- Client-request idempotency is not implemented for order creation.
-- The queue publisher is integrated, but no worker consumes its jobs yet. Database-level job
-  idempotency and worker retry/compensation behavior remain to be implemented.
-- Automated tests currently focus on selected order service and repository behavior; product
-  endpoint tests, HTTP E2E tests, and tests against a real PostgreSQL instance are not included.
-- Deployment automation and worker deployment configuration remain future work; Compose currently targets local development.
+```powershell
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT id, status FROM orders WHERE id = 'PASTE-ORDER-UUID-HERE';"
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT event_type, payload FROM notification_logs WHERE order_id = 'PASTE-ORDER-UUID-HERE' ORDER BY created_at;"
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT id, sku, stock FROM products WHERE id = 'PASTE-PRODUCT-UUID-HERE';"
+```
+
+Kết quả mong đợi: order `CONFIRMED`, đúng một log `ORDER_CONFIRMED`, và stock giảm đúng 1 so với mốc bước 1. SQL xác nhận dữ liệu trong PostgreSQL; endpoint `/jobs` cho biết trạng thái riêng của queue.
+
+### 3.4 Kiểm tra retry, hết lượt và hoàn kho
+
+Phần này dùng xác suất lỗi ngẫu nhiên nên không đảm bảo mọi đơn đều retry hoặc thất bại. Dùng một đơn thử mới ở bước 3.3, rồi giữ nguyên `$orderId` trong cùng cửa sổ PowerShell.
+
+**Bước 1 — Theo dõi trạng thái job:**
+
+```powershell
+for ($i = 0; $i -lt 20; $i++) {
+    try {
+        $job = Invoke-RestMethod -Method Get -Uri "$baseUrl/orders/$orderId/jobs"
+        Write-Host "state=$($job.state); attempts=$($job.attempts)/$($job.maxAttempts); reason=$($job.failureReason)"
+        if ($job.state -in @('completed', 'failed')) { break }
+    }
+    catch {
+        Write-Host 'Job chưa xuất hiện trong Redis; publisher có thể chưa dispatch.'
+    }
+
+    Start-Sleep -Seconds 2
+}
+```
+
+Vòng lặp hỏi trạng thái tối đa 20 lần, cách nhau 2 giây. `delayed` cùng số lượt tăng cho biết BullMQ đang chờ retry; `completed` hoặc `failed` là trạng thái kết thúc.
+
+**Bước 2 — Đọc trạng thái cuối cùng của order:**
+
+```powershell
+Invoke-RestMethod -Method Get -Uri "$baseUrl/orders/$orderId" |
+    Format-List id, status
+```
+
+Nếu job thành công ở lượt nào đó, order sẽ là `CONFIRMED`. Nếu cả ba lượt đều lỗi, order phải là `FAILED`.
+
+**Bước 3 — Nếu order là `FAILED`, kiểm tra log và stock:**
+
+```powershell
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT event_type, payload FROM notification_logs WHERE order_id = '$orderId' ORDER BY created_at;"
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT id, sku, stock FROM products WHERE id = '$productId';"
+```
+
+Khi thất bại cuối cùng, job phải có `state=failed`, `attempts=3` và `failureReason`; database có log `ORDER_FAILED` và stock được hoàn về mốc trước khi tạo đơn. Khi đơn `CONFIRMED`, kho không được hoàn vì đơn đã bán thành công.
+
+Ba lần lỗi liên tiếp chỉ có xác suất khoảng `0.3 × 0.3 × 0.3 = 2.7%`. Vì vậy không nên tạo nhiều đơn để cố ép lỗi: đơn thành công vẫn tiêu thụ stock. Để kiểm tra nhánh lỗi cuối một cách lặp lại được, chạy test ở mục 3.5.
+
+### 3.5 Chạy unit test cho job
+
+Các bước này kiểm tra những nhánh có tính ngẫu nhiên bằng mock, để kết quả luôn lặp lại được mà không cần tạo nhiều đơn thật.
+
+**Bước 1 — Chạy test processor và repository:**
+
+```powershell
+npx jest --runInBand `
+    src/modules/orders/infrastructure/queue/processors/order-processing.processor.spec.ts `
+    src/modules/orders/infrastructure/repositories/write/order-processing/typeorm-order-processing.repository.spec.ts
+```
+
+Processor spec kiểm tra lỗi trước lần cuối được retry và chỉ lần cuối mới gọi nhánh đánh dấu `FAILED`. Repository spec kiểm tra transaction hoàn kho, không hoàn lại cho order đã kết thúc, xác nhận lặp không ghi notification lặp và scheduler không hoàn stock lần thứ hai. Đây là hai suite quan trọng nhất để kiểm chứng yêu cầu idempotency của job.
+
+**Bước 2 — Chạy test publisher:**
+
+```powershell
+npx jest --runInBand src/modules/orders/infrastructure/queue/publishers/typeorm-order-processing.publisher.spec.ts
+```
+
+Kiểm tra publisher gửi payload tối thiểu `{ orderId }`, dùng job ID ổn định, và giữ event outbox để gửi lại khi Redis lỗi.
+
+**Bước 3 — Chạy test API đọc trạng thái job:**
+
+```powershell
+npx jest --runInBand src/modules/orders/infrastructure/queue/readers/bullmq-order-job-status.reader.spec.ts
+```
+
+Kiểm tra các giá trị `state`, `attempts`, `maxAttempts`, `failureReason` và trường hợp job không tồn tại.
+
+**Bước 4 — Chạy test simulator và lịch định kỳ:**
+
+```powershell
+npx jest --runInBand `
+    src/modules/orders/infrastructure/queue/simulators/order-processing.simulator.spec.ts `
+    src/modules/orders/infrastructure/queue/schedulers/order-expiration.scheduler.spec.ts
+```
+
+Các test này xác nhận thời gian giả lập 3–5 giây, lỗi ngẫu nhiên, và scheduler được đăng ký chạy mỗi 5 phút.
+
+**Bước 5 — Chạy tất cả test trong repository:**
+
+```powershell
+npm test -- --runInBand
+```
+
+Unit test dùng mock nên chứng minh nhánh logic được gọi đúng; chúng không tự khởi động Redis/PostgreSQL và không thay thế phép thử API/SQL thực tế ở mục 3.3, 3.4 và 3.6.
+
+### 3.6 Kiểm tra scheduler tự hủy đơn quá hạn
+
+Scheduler chạy mỗi 5 phút, nên sau khi chuẩn bị dữ liệu có thể phải đợi tối đa 5 phút. Các lệnh dưới đây sửa dữ liệu trực tiếp; chỉ dùng trong database local và chọn một order có thể bỏ.
+
+**Bước 1 — Chọn order thử nghiệm đã xử lý xong:**
+
+```powershell
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT id, created_at FROM orders WHERE status = 'CONFIRMED' ORDER BY created_at DESC LIMIT 10;"
+```
+
+Chọn một order `CONFIRMED` dùng riêng cho test. Job xử lý ban đầu đã xong nên không còn retry để chuyển nó về `CONFIRMED` trong lúc scheduler chạy. Ghi lại order ID.
+
+**Bước 2 — Ghi lại stock hiện tại của các sản phẩm trong order:**
+
+Thay placeholder bằng ID đã chọn. Lưu `stock` và `quantity` để so sánh sau khi scheduler hoàn kho:
+
+```powershell
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT p.id, p.sku, p.stock, oi.quantity FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = 'PASTE-DISPOSABLE-ORDER-UUID-HERE' ORDER BY p.sku;"
+```
+
+**Bước 3 — Làm order quá hạn để không phải chờ 30 phút:**
+
+Lệnh chỉ sửa `status` và `created_at`; nó không hoàn kho. Scheduler mới là phần cần được kiểm tra. Điều kiện `AND status = 'CONFIRMED'` giúp tránh sửa nhầm order đã đổi trạng thái:
+
+```powershell
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "UPDATE orders SET status = 'PENDING', created_at = NOW() - INTERVAL '31 minutes' WHERE id = 'PASTE-DISPOSABLE-ORDER-UUID-HERE' AND status = 'CONFIRMED';"
+```
+
+Chỉ tiếp tục nếu kết quả là `UPDATE 1`. Nếu nhận `UPDATE 0`, hãy chọn order khác; không bỏ điều kiện trạng thái. Giờ order đủ điều kiện `PENDING` và cũ hơn 30 phút.
+
+**Bước 4 — Chờ scheduler và kiểm tra kết quả:**
+
+Đợi tối đa 5 phút, sau đó chạy các truy vấn dưới đây với cùng order ID:
+
+```powershell
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT id, status, created_at FROM orders WHERE id = 'PASTE-DISPOSABLE-ORDER-UUID-HERE';"
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT event_type, payload FROM notification_logs WHERE order_id = 'PASTE-DISPOSABLE-ORDER-UUID-HERE' ORDER BY created_at;"
+docker compose exec postgres psql -U mini_order -d mini_order_management -c "SELECT p.sku, p.stock, oi.quantity FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = 'PASTE-DISPOSABLE-ORDER-UUID-HERE' ORDER BY p.sku;"
+```
+
+Kết quả đúng là order `CANCELLED`, có log `ORDER_EXPIRED`, và stock sau test bằng stock đã ghi ở bước 2 cộng `quantity`. Log `ORDER_CONFIRMED` cũ có thể còn vì test chỉ sửa trực tiếp bảng `orders`; đó là lịch sử cũ, không phải scheduler tạo log xác nhận mới. Nếu chưa thấy kết quả, kiểm tra `docker compose logs -f api` để xác nhận ứng dụng và scheduler đang chạy.
+
+## 4. Cách chống bán vượt tồn kho
+
+Khi tạo đơn, repository bảo vệ tồn kho bằng nhiều lớp:
+
+1. **Khóa dòng sản phẩm (`pessimistic_write` / `FOR UPDATE`):** transaction khóa các sản phẩm trước khi đọc và kiểm tra tồn. Request khác mua cùng sản phẩm phải đợi transaction đang giữ khóa hoàn tất.
+2. **Thứ tự khóa cố định:** nếu đơn có nhiều sản phẩm, hệ thống xử lý theo thứ tự `productId` để giảm nguy cơ hai transaction khóa chéo nhau.
+3. **Trừ có điều kiện:** câu lệnh cập nhật chỉ trừ nếu `stock >= quantity`. Nếu không cập nhật đúng một dòng, repository báo thiếu hàng và transaction rollback.
+4. **Constraint ở PostgreSQL:** `CHK_products_stock_non_negative` cấm lưu `stock < 0`, kể cả khi có lỗi ngoài dự kiến ở ứng dụng.
+5. **Transaction nguyên tử:** tạo đơn, tạo `order_items`, trừ kho và ghi outbox cùng thành công hoặc cùng rollback; không để lại đơn nửa chừng.
+
+Ví dụ còn đúng 1 sản phẩm nhưng có 2 khách đặt đồng thời: request lấy khóa trước trừ stock về 0 và commit. Request còn lại đợi, sau đó đọc stock đã commit và bị từ chối `409 Conflict`. Không có hai đơn cùng bán một đơn vị cuối và stock không âm.
+
+**Giới hạn cần phân biệt:** cơ chế trên chống hai giao dịch cạnh tranh bán vượt số lượng tồn. API chưa hỗ trợ header `Idempotency-Key` cho request tạo đơn; nếu client gửi lại `POST /api/orders`, hệ thống có thể tạo một đơn khác nếu kho vẫn đủ. Đây là chống gửi request trùng, khác với idempotency của job nền đã mô tả ở mục 3.
+
+Test repository tạo đơn có thể chạy riêng bằng:
+
+```powershell
+npx jest --runInBand src/modules/orders/infrastructure/repositories/write/order-write/typeorm-order-write.create.spec.ts
+```
+
+Test này kiểm tra logic khóa/trừ kho với mock. Chưa có bài kiểm thử tích hợp tạo hai HTTP request đồng thời trên PostgreSQL thật; muốn kiểm chứng race thực tế cần chạy bài test riêng với database test và tồn kho được cô lập.
+
+## 5. Nền tảng triển khai
+
+| Thành phần            | Nền tảng chọn            | Lý do                                                                                                                                                           |
+| --------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API NestJS và Swagger | Vercel                   | Bám sát yêu cầu đề bài về nơi deploy API; Vercel hỗ trợ backend Node.js dưới dạng Functions và có URL HTTPS công khai.                                          |
+| Worker BullMQ         | Render Background Worker | Worker cần chạy liên tục để nhận job từ Redis; Render có loại dịch vụ worker riêng và tài liệu chính thức nêu BullMQ cho Node.js là trường hợp sử dụng phù hợp. |
+| PostgreSQL            | Neon                     | Dùng PostgreSQL được quản lý bên ngoài ứng dụng; API và worker cùng kết nối đến một database qua `DATABASE_URL`.                                                |
+| Redis                 | Upstash                  | BullMQ dùng Redis làm queue; API đọc trạng thái job và worker gửi/nhận job phải kết nối cùng một Redis qua `REDIS_URL`.                                         |
