@@ -73,7 +73,7 @@ src/
 ├── main.ts                         # Bootstrap, /api prefix, validation, Swagger, startup URLs
 ├── database/
 │   ├── config/                     # TypeORM application and CLI configuration
-│   ├── entities/                   # Product, order, and order-item persistence models
+│   ├── entities/                   # Product, order, item, notification, and outbox models
 │   ├── enums/                     # Persistence-related order status values
 │   ├── migrations/                # Explicit PostgreSQL schema changes
 │   └── seeds/
@@ -238,8 +238,8 @@ product's SKU cannot currently be reused.
 | `created_at`     | `timestamptz`  | Creation timestamp; indexed for order listing             |
 | `updated_at`     | `timestamptz`  | Last-update timestamp                                     |
 
-Supported statuses are `PENDING`, `CONFIRMED`, and `CANCELLED`. A composite index on
-`(status, created_at)` supports status-filtered order listing.
+Supported statuses are `PENDING`, `CONFIRMED`, `CANCELLED`, and `FAILED`. A composite index
+on `(status, created_at)` supports status-filtered order listing.
 
 ### `order_items`
 
@@ -256,6 +256,40 @@ Supported statuses are `PENDING`, `CONFIRMED`, and `CANCELLED`. A composite inde
 Indexes are defined for `order_items.order_id` and `order_items.product_id`. Products are
 soft-deleted rather than hard-deleted, so existing order-item references and purchase history
 remain intact.
+
+### `notification_logs`
+
+| Column       | Type          | Purpose and constraints                    |
+| ------------ | ------------- | ------------------------------------------ |
+| `id`         | `uuid`        | Primary key                                |
+| `order_id`   | `uuid`        | Required foreign key to `orders`           |
+| `event_type` | `varchar(64)` | Notification event name                    |
+| `payload`    | `jsonb`       | Event details; defaults to an empty object |
+| `created_at` | `timestamptz` | Log creation time                          |
+
+A unique index on `(order_id, event_type)` is the database-level guard against recording the
+same notification event more than once. The worker that writes confirmation notifications is
+planned for a later phase.
+
+### `outbox_events`
+
+| Column         | Type                   | Purpose and constraints                                 |
+| -------------- | ---------------------- | ------------------------------------------------------- |
+| `id`           | `uuid`                 | Primary key                                             |
+| `order_id`     | `uuid`                 | Required foreign key to `orders`                        |
+| `event_type`   | `varchar(64)`          | Currently `ORDER_PROCESSING_REQUESTED`                  |
+| `dedupe_key`   | `varchar(160)`         | Unique key used to prevent duplicate dispatch           |
+| `payload`      | `jsonb`                | Minimal event payload containing the order ID           |
+| `attempts`     | `integer`              | Non-negative publisher-attempt counter; defaults to `0` |
+| `available_at` | `timestamptz`          | Earliest time the publisher may retry the event         |
+| `published_at` | nullable `timestamptz` | `NULL` until the event is sent to the queue             |
+| `last_error`   | nullable `text`        | Most recent publisher error                             |
+| `created_at`   | `timestamptz`          | Event creation time                                     |
+
+Order creation writes this event in the same PostgreSQL transaction as the order, inventory
+decrement, and order items. This prevents a committed order from losing its processing request
+if Redis is unavailable. The outbox publisher and BullMQ queue are not implemented yet, so
+events remain unpublished for now.
 
 TypeORM also maintains a migration-history table to record which migrations have been applied.
 
@@ -456,7 +490,8 @@ worker should not be deployed until those components and their retry/idempotency
 - No payment integration or order-confirmation endpoint is implemented. `CONFIRMED` is a
   supported persisted status and may be used by other workflows, but this API does not set it.
 - Client-request idempotency is not implemented for order creation.
-- Background jobs, BullMQ, Redis, and a transactional outbox are not implemented.
+- BullMQ/Redis publishing and the worker are not integrated yet. Order creation now records
+  transactional outbox events, which will remain unpublished until the queue publisher is added.
 - Automated tests currently focus on selected order service and repository behavior; product
   endpoint tests, HTTP E2E tests, and tests against a real PostgreSQL instance are not included.
 - Deployment automation, containerization, and worker deployment configuration remain future work.

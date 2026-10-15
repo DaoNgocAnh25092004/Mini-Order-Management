@@ -3,8 +3,10 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, IsNull, MoreThanOrEqual } from 'typeorm';
 import { OrderEntity } from '@/database/entities/order.entity';
 import { OrderItemEntity } from '@/database/entities/order-item.entity';
+import { OrderOutboxEventEntity } from '@/database/entities/order-outbox-event.entity';
 import { ProductEntity } from '@/database/entities/product.entity';
 import { OrderStatus } from '@/database/enums/order-status.enum';
+import { OrderOutboxEventType } from '@/database/enums/order-outbox-event-type.enum';
 import type {
     CreatedOrder,
     CreateOrderInput,
@@ -130,7 +132,16 @@ export class TypeOrmOrderWriteRepository implements OrderWriteRepository {
             // Lưu toàn bộ order_items
             const savedItems = await manager.save(OrderItemEntity, orderItems);
 
-            // Chỉ trả kết quả sau khi order và toàn bộ order_items đã được lưu thành công trong transaction.
+            // Ghi yêu cầu xử lý vào outbox bằng cùng transaction; lỗi enqueue sau này không làm mất dấu đơn cần xử lý.
+            const outboxEvent = manager.create(OrderOutboxEventEntity, {
+                orderId: savedOrder.id,
+                eventType: OrderOutboxEventType.ORDER_PROCESSING_REQUESTED,
+                dedupeKey: `order-processing-${savedOrder.id}`,
+                payload: { orderId: savedOrder.id },
+            });
+            await manager.save(OrderOutboxEventEntity, outboxEvent);
+
+            // Chỉ trả kết quả sau khi order, order_items và outbox event đều được lưu thành công trong transaction.
             return {
                 id: savedOrder.id,
                 customerName: savedOrder.customerName,

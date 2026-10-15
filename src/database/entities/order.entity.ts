@@ -20,7 +20,7 @@ import { OrderItemEntity } from '@/database/entities/order-item.entity';
 )
 @Check(
     'CHK_orders_status_valid',
-    "\"status\" IN ('PENDING', 'CONFIRMED', 'CANCELLED')",
+    "\"status\" IN ('PENDING', 'CONFIRMED', 'CANCELLED', 'FAILED')",
 )
 export class OrderEntity {
     @PrimaryGeneratedColumn('uuid')
