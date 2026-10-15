@@ -1,5 +1,11 @@
-// Đăng ký resolver trước khi Vercel nạp AppModule và các import dùng alias @/.
-import 'tsconfig-paths/register';
+// Đăng ký alias tường minh trước các import Nest vì Vercel không đóng gói tsconfig.json.
+require('tsconfig-paths').register({
+    baseUrl: process.cwd(),
+    paths: {
+        '@/*': ['src/*'],
+    },
+});
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
