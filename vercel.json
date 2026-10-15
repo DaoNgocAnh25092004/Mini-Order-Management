@@ -1,8 +1,3 @@
 {
-    "$schema": "https://openapi.vercel.sh/vercel.json",
-    "functions": {
-        "main.js": {
-            "includeFiles": "node_modules/swagger-ui-dist/**"
-        }
-    }
+    "$schema": "https://openapi.vercel.sh/vercel.json"
 }
